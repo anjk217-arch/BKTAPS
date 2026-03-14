@@ -10,6 +10,7 @@ from streamlit_autorefresh import st_autorefresh
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
+# [#] 데이터 불러오기 (UI 상태 보존 로직 추가)
 def load_data():
     defaults = {
         "queue": [], 
@@ -23,7 +24,9 @@ def load_data():
         "post_style": "머니독 스타일(사투리)",
         "target_days": ["월", "수", "금"],
         "start_t": "09:00:00",
-        "end_t": "22:00:00"
+        "end_t": "22:00:00",
+        "auto_gen_mode": False, # 자동화 스위치 상태 저장용
+        "auto_post_mode": False
     }
     if os.path.exists(SAVE_FILE):
         try:
@@ -35,6 +38,7 @@ def load_data():
         except: return defaults
     return defaults
 
+# [#] 데이터 저장하기 (현재 UI의 모든 값 박제)
 def save_data():
     data = {
         "queue": st.session_state.queue,
@@ -48,20 +52,21 @@ def save_data():
         "post_style": st.session_state.post_style,
         "target_days": st.session_state.target_days,
         "start_t": st.session_state.start_t.isoformat() if isinstance(st.session_state.start_t, datetime.time) else st.session_state.start_t,
-        "end_t": st.session_state.end_t.isoformat() if isinstance(st.session_state.end_t, datetime.time) else st.session_state.end_t
+        "end_t": st.session_state.end_t.isoformat() if isinstance(st.session_state.end_t, datetime.time) else st.session_state.end_t,
+        "auto_gen_mode": st.session_state.auto_gen_mode,
+        "auto_post_mode": st.session_state.auto_post_mode
     }
     with open(SAVE_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# API 설정
+# API 설정 (Secret 연동)
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 THREADS_ACCESS_TOKEN = st.secrets["THREADS_ACCESS_TOKEN"]
 THREADS_USER_ID = st.secrets["THREADS_USER_ID"]
 
-
-
 genai.configure(api_key=GEMINI_API_KEY)
 
+# [#] 세션 초기화 및 로드
 if 'initialized' not in st.session_state:
     saved = load_data()
     for k, v in saved.items(): st.session_state[k] = v
@@ -103,7 +108,6 @@ def publish_to_threads(content):
 # --- UI 구성 ---
 st.set_page_config(page_title="Threads Auto posting system", layout="wide")
 
-# [핵심] 화살표 회전 및 상태별 색상 CSS
 st.markdown("""
     <style>
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -116,13 +120,7 @@ st.markdown("""
 st.title("🤖 BK의 24시간 쓰레드 자동화 시스템(Test ver.)")
 st.markdown("##### **AI가 24시간 쉬지 않고 글을 쓰고 올리는 머니독 전용 무인 조종실입니다!**")
 st.markdown("##### :red[**gemini-2.5-flash 한도 초과로 429 error 발생시 아래 모델들 중에서 골라서 이용할 것**]")
-st.markdown("""
-<small>
-gemini-3-flash-preview<br>
-gemini-2.5-flash-lite<br>
-gemini-3.1-flash-lite
-</small>
-""", unsafe_allow_html=True)
+st.markdown("""<small>gemini-3-flash-preview<br>gemini-2.5-flash-lite<br>gemini-3.1-flash-lite</small>""", unsafe_allow_html=True)
 st.divider()
 
 st_autorefresh(interval=60000, key="auto_worker")
@@ -131,32 +129,30 @@ available_models = get_available_models()
 
 with st.sidebar:
     st.header("⚙️ 무인 엔진 스위치")
-    auto_gen_mode = st.toggle("✍️ AI 자동 글 생성", value=False)
-    auto_post_mode = st.toggle("🚀 완전 자동 업로드", value=False)
     
-    # [수정] 가동 상태 세부 표시 로직
-    pending_count = len([item for item in st.session_state.queue if not item.get("posted", False)])
+    # [수정] 스위치 값 보존 로직
+    old_gen = st.session_state.auto_gen_mode
+    old_post = st.session_state.auto_post_mode
     
-    if auto_gen_mode and auto_post_mode:
-        status_text, status_color, status_icon = "FULL AUTOMATION", "#00FF00", "spinning"
-        status_desc = f"글 생성 + 업로드 가동 중 ({pending_count}개 대기)"
-    elif auto_gen_mode:
-        status_text, status_color, status_icon = "GEN ONLY", "#00BFFF", "spinning"
-        status_desc = "AI 글 생성만 가동 중"
-    elif auto_post_mode:
-        status_text, status_color, status_icon = "UPLOAD ONLY", "#FFA500", "spinning"
-        status_desc = f"자동 업로드만 가동 중 ({pending_count}개 대기)"
-    else:
-        status_text, status_color, status_icon = "ENGINE PAUSED", "#888", "stopped"
-        status_desc = "엔진이 멈춰있십니더"
+    st.session_state.auto_gen_mode = st.toggle("✍️ AI 자동 글 생성", value=st.session_state.auto_gen_mode)
+    st.session_state.auto_post_mode = st.toggle("🚀 완전 자동 업로드", value=st.session_state.auto_post_mode)
+    
+    # 스위치 바뀌면 바로 저장
+    if old_gen != st.session_state.auto_gen_mode or old_post != st.session_state.auto_post_mode:
+        save_data()
 
-    st.markdown(f"""
-    <div class="status-card">
-        <span class="{status_icon}" style="color:{status_color};">🔄</span><br>
-        <b style="color:{status_color}; font-size: 18px;">{status_text}</b><br>
-        <small style="color:#bbb;">{status_desc}</small>
-    </div>
-    """, unsafe_allow_html=True)
+    # 가동 상태 세부 표시 로직 (기존 유지)
+    pending_count = len([item for item in st.session_state.queue if not item.get("posted", False)])
+    if st.session_state.auto_gen_mode and st.session_state.auto_post_mode:
+        text, color, icon, desc = "FULL AUTO", "#00FF00", "spinning", f"가동 중 ({pending_count}개 대기)"
+    elif st.session_state.auto_gen_mode:
+        text, color, icon, desc = "GEN ONLY", "#00BFFF", "spinning", "AI 글 생성만 가동 중"
+    elif st.session_state.auto_post_mode:
+        text, color, icon, desc = "UPLOAD ONLY", "#FFA500", "spinning", f"업로드만 가동 중 ({pending_count}개 대기)"
+    else:
+        text, color, icon, desc = "PAUSED", "#888", "stopped", "엔진이 멈춰있십니더"
+
+    st.markdown(f"""<div class="status-card"><span class="{icon}" style="color:{color};">🔄</span><br><b style="color:{color}; font-size:18px;">{text}</b><br><small style="color:#bbb;">{desc}</small></div>""", unsafe_allow_html=True)
 
     st.divider()
     with st.popover("🕒 10분 단위 간격 설정"):
@@ -180,18 +176,20 @@ with t1:
             save_data()
             with st.spinner("AI가 글 쓰는 중..."):
                 res_text = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
-                st.session_state.queue.append({
-                    "time": datetime.datetime.now().strftime("%m-%d %H:%M"), 
-                    "content": res_text, "model": st.session_state.selected_model, 
-                    "target_max": st.session_state.char_range[1], "posted": False
-                })
+                st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res_text, "model": st.session_state.selected_model, "target_max": st.session_state.char_range[1], "posted": False})
                 save_data(); st.success("초안 생성 완료!")
 
     st.divider()
     col1, col2 = st.columns(2)
     with col1:
         st.session_state.char_range = st.slider("글자 수 (최소~최대)", 10, 300, value=tuple(st.session_state.char_range))
-        st.session_state.post_style = st.selectbox("말투 설정", ["머니독 스타일(사투리)", "전문적 시황 분석", "친절한 이웃"], index=0)
+        
+        # [수정] 말투 설정 인덱스 보존 로직
+        styles = ["머니독 스타일(사투리)", "전문적 시황 분석", "친절한 이웃"]
+        try: style_idx = styles.index(st.session_state.post_style)
+        except: style_idx = 0
+        st.session_state.post_style = st.selectbox("말투 설정", styles, index=style_idx)
+        
     with col2:
         st.session_state.target_days = st.multiselect("요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
         cs, ce = st.columns(2)
@@ -200,16 +198,17 @@ with t1:
 
     if st.button("💾 현재 모든 설정값 저장하기"): save_data(); st.success("박제 완료!")
 
+    # --- [자동화 엔진] ---
     now = datetime.datetime.now()
     if ["월","화","수","목","금","토","일"][now.weekday()] in st.session_state.target_days and st.session_state.start_t <= now.time() <= st.session_state.end_t:
-        if auto_gen_mode:
+        if st.session_state.auto_gen_mode:
             lg = st.session_state.last_gen_time
             if lg is None or (now - datetime.datetime.fromisoformat(lg)).total_seconds() >= st.session_state.gen_interval_min * 60:
                 new_txt = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model)
                 st.session_state.queue.append({"time": now.strftime("%m-%d %H:%M"), "content": new_txt, "model": st.session_state.selected_model, "target_max": st.session_state.char_range[1], "posted": False})
                 st.session_state.last_gen_time = now.isoformat(); save_data(); st.toast("✍️ 자동 생성 완료!")
         
-        if auto_post_mode:
+        if st.session_state.auto_post_mode:
             unposted = [idx for idx, item in enumerate(st.session_state.queue) if not item.get("posted", False)]
             if unposted:
                 lp = st.session_state.last_post_time
@@ -219,9 +218,9 @@ with t1:
                         st.session_state.last_post_time = now.isoformat(); save_data(); st.toast("🚀 자동 업로드 성공!"); st.rerun()
 
 with t2:
+    # (보관함 로직은 기존과 동일)
     st.subheader("📋 콘텐츠 목록 관리")
     sub_tabs = st.tabs(["전체 보기", "⏳ 대기 중", "✅ 발행 완료"])
-    
     def display_item(idx, item, tab_id):
         is_posted = item.get("posted", False)
         with st.container(border=True):
@@ -252,4 +251,4 @@ with t2:
             if it.get("posted"): display_item(idx, it, "completed")
 
 st.divider()
-st.caption(f"© 2026 MoneyDock Auto | 세부 상태창이 적용된 버전입니더.")
+st.caption(f"© 2026 MoneyDock Auto | 말투 및 스위치 설정이 완벽하게 저장됩니더.")
