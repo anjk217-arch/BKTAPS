@@ -10,7 +10,7 @@ from streamlit_autorefresh import st_autorefresh
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
-# [#] 데이터 불러오기 (UI 상태 보존 로직 추가)
+# [#] 데이터 불러오기 (안전장치 강화)
 def load_data():
     defaults = {
         "queue": [], 
@@ -25,20 +25,21 @@ def load_data():
         "target_days": ["월", "수", "금"],
         "start_t": "09:00:00",
         "end_t": "22:00:00",
-        "auto_gen_mode": False, # 자동화 스위치 상태 저장용
+        "auto_gen_mode": False,
         "auto_post_mode": False
     }
     if os.path.exists(SAVE_FILE):
         try:
             with open(SAVE_FILE, 'r', encoding='utf-8') as f:
                 saved_data = json.load(f)
+                # 저장된 데이터에 없는 항목은 기본값으로 채워넣기
                 for key, val in defaults.items():
                     if key not in saved_data: saved_data[key] = val
                 return saved_data
         except: return defaults
     return defaults
 
-# [#] 데이터 저장하기 (현재 UI의 모든 값 박제)
+# [#] 데이터 저장하기
 def save_data():
     data = {
         "queue": st.session_state.queue,
@@ -66,16 +67,19 @@ THREADS_USER_ID = st.secrets["THREADS_USER_ID"]
 
 genai.configure(api_key=GEMINI_API_KEY)
 
-# [#] 세션 초기화 및 로드
-if 'initialized' not in st.session_state:
-    saved = load_data()
-    for k, v in saved.items(): st.session_state[k] = v
-    try:
-        st.session_state.start_t = datetime.time.fromisoformat(saved["start_t"])
-        st.session_state.end_t = datetime.time.fromisoformat(saved["end_t"])
-    except:
-        st.session_state.start_t, st.session_state.end_t = datetime.time(9,0), datetime.time(22,0)
-    st.session_state.initialized = True
+# [#] 세션 초기화 (에러 방지용 강철 로직)
+saved = load_data()
+for key, value in saved.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+# 시간 데이터 객체 변환
+if isinstance(st.session_state.start_t, str):
+    try: st.session_state.start_t = datetime.time.fromisoformat(st.session_state.start_t)
+    except: st.session_state.start_t = datetime.time(9,0)
+if isinstance(st.session_state.end_t, str):
+    try: st.session_state.end_t = datetime.time.fromisoformat(st.session_state.end_t)
+    except: st.session_state.end_t = datetime.time(22,0)
 
 @st.cache_resource
 def get_available_models():
@@ -98,7 +102,7 @@ def publish_to_threads(content):
     base_url = f"https://graph.threads.net/v1.0/{THREADS_USER_ID}"
     params = {'media_type': 'TEXT', 'text': content, 'access_token': THREADS_ACCESS_TOKEN}
     try:
-        res = requests.post(f"{base_url}/threads", data=params).json()
+        res = requests.post(base_url, data=params).json()
         if 'id' in res:
             requests.post(f"{base_url}/threads_publish", data={'creation_id': res['id'], 'access_token': THREADS_ACCESS_TOKEN})
             return True
@@ -124,24 +128,16 @@ st.markdown("""<small>gemini-3-flash-preview<br>gemini-2.5-flash-lite<br>gemini-
 st.divider()
 
 st_autorefresh(interval=60000, key="auto_worker")
-
 available_models = get_available_models()
 
 with st.sidebar:
     st.header("⚙️ 무인 엔진 스위치")
     
-    # [수정] 스위치 값 보존 로직
-    old_gen = st.session_state.auto_gen_mode
-    old_post = st.session_state.auto_post_mode
+    # [수정] 스위치 값 보존 로직 (Key를 명시해서 중복 실행 방지)
+    st.toggle("✍️ AI 자동 글 생성", key="auto_gen_mode", on_change=save_data)
+    st.toggle("🚀 완전 자동 업로드", key="auto_post_mode", on_change=save_data)
     
-    st.session_state.auto_gen_mode = st.toggle("✍️ AI 자동 글 생성", value=st.session_state.auto_gen_mode)
-    st.session_state.auto_post_mode = st.toggle("🚀 완전 자동 업로드", value=st.session_state.auto_post_mode)
-    
-    # 스위치 바뀌면 바로 저장
-    if old_gen != st.session_state.auto_gen_mode or old_post != st.session_state.auto_post_mode:
-        save_data()
-
-    # 가동 상태 세부 표시 로직 (기존 유지)
+    # 상태창 표시 로직
     pending_count = len([item for item in st.session_state.queue if not item.get("posted", False)])
     if st.session_state.auto_gen_mode and st.session_state.auto_post_mode:
         text, color, icon, desc = "FULL AUTO", "#00FF00", "spinning", f"가동 중 ({pending_count}개 대기)"
@@ -183,12 +179,9 @@ with t1:
     col1, col2 = st.columns(2)
     with col1:
         st.session_state.char_range = st.slider("글자 수 (최소~최대)", 10, 300, value=tuple(st.session_state.char_range))
-        
-        # [수정] 말투 설정 인덱스 보존 로직
         styles = ["머니독 스타일(사투리)", "전문적 시황 분석", "친절한 이웃"]
-        try: style_idx = styles.index(st.session_state.post_style)
-        except: style_idx = 0
-        st.session_state.post_style = st.selectbox("말투 설정", styles, index=style_idx)
+        current_style = st.session_state.get("post_style", styles[0])
+        st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(current_style) if current_style in styles else 0)
         
     with col2:
         st.session_state.target_days = st.multiselect("요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
@@ -218,7 +211,6 @@ with t1:
                         st.session_state.last_post_time = now.isoformat(); save_data(); st.toast("🚀 자동 업로드 성공!"); st.rerun()
 
 with t2:
-    # (보관함 로직은 기존과 동일)
     st.subheader("📋 콘텐츠 목록 관리")
     sub_tabs = st.tabs(["전체 보기", "⏳ 대기 중", "✅ 발행 완료"])
     def display_item(idx, item, tab_id):
@@ -251,4 +243,4 @@ with t2:
             if it.get("posted"): display_item(idx, it, "completed")
 
 st.divider()
-st.caption(f"© 2026 MoneyDock Auto | 말투 및 스위치 설정이 완벽하게 저장됩니더.")
+st.caption(f"© 2026 MoneyDock Auto | 세션 초기화 에러가 해결된 버전입니더.")
