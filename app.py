@@ -135,13 +135,13 @@ with st.sidebar:
 t1, t2 = st.tabs(["✨ 글 생성 및 설정", "📋 콘텐츠 보관함"])
 
 with t1:
-    # [변경] 프롬프트 작성 섹션을 상단으로 이동
+    # [변경] 프롬프트 작성 섹션 (아래 가로줄 제거)
     st.subheader("📝 프롬프트 작성")
     st.session_state.topic_input = st.text_area("작성할 주제나 상황(프롬프트)을 입력하세요", value=st.session_state.topic_input, height=150)
     
-    st.divider()
+    # [제거] st.divider() - 요청하신 대로 가로줄을 삭제했습니다.
 
-    # [변경] 세부설정 및 스케줄설정 섹션을 아래로 이동
+    # 세부설정 및 스케줄설정 섹션
     col_left, col_mid, col_right = st.columns([1, 0.1, 1])
     
     with col_left:
@@ -165,7 +165,6 @@ with t1:
 
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # [변경] 버튼 배치 순서: 설정값 저장 -> AI 초안 생성
     if st.button("💾 현재 설정값 저장하기", use_container_width=True):
         save_data()
         st.success("설정 데이터가 안전하게 저장되었습니다.")
