@@ -53,7 +53,7 @@ def save_data():
     with open(SAVE_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# API 및 세션 초기화
+# API 및 세션 초기화 (위젯 렌더링 전 반드시 수행)
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 genai.configure(api_key=GEMINI_API_KEY)
 
@@ -68,48 +68,31 @@ if 'initialized' not in st.session_state:
     st.session_state.initialized = True
     st.session_state.success_msg = None
 
-# [핵심] 사용 가능한 모든 텍스트 모델 리스트 실시간 조사
 @st.cache_resource
 def get_available_models():
     try:
         models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        return sorted(models)
+        return models if models else ["models/gemini-1.5-flash"]
     except: return ["models/gemini-1.5-flash"]
 
-# [강화] 전수 조사형 자동 모델 전환(Fallback) 로직
-def generate_draft(topic, min_len, max_len, style, selected_model):
-    all_models = get_available_models()
-    if selected_model in all_models:
-        all_models.remove(selected_model)
-    # 선택한 모델을 0순위로, 나머지를 순차 시도
-    trial_order = [selected_model] + all_models
-    
-    last_err = ""
-    for model_path in trial_order:
-        try:
-            model = genai.GenerativeModel(model_path)
-            prompt = f"""
-            너는 글자 수 제한 전문가이다. 다음 요청에 따라 글을 작성해라.
-            주제: {topic}
-            말투: {style}
-            [규칙] 공백 포함 반드시 {min_len}자 이상, {max_len}자 이하로만 작성할 것.
-            스스로 글자 수를 세어보고 범위에 맞지 않으면 내용을 수정해서 최종 결과만 출력해라.
-            부연 설명 없이 게시글 '내용만' 출력할 것.
-            """
-            response = model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            last_err = str(e)
-            if "429" in last_err or "quota" in last_err.lower():
-                continue # 한도 초과면 다음 모델로 즉시 전환
-            else:
-                break # 다른 치명적 에러면 중단
-    return f"⚠️ 가용 모델({len(trial_order)}개) 전원 한도 초과: {last_err}"
+def generate_draft(topic, min_len, max_len, style, model_name):
+    try:
+        model = genai.GenerativeModel(model_name)
+        prompt = f"""
+        주제: {topic}
+        말투: {style}
+        [제한] 공백 포함 반드시 {min_len}자 ~ {max_len}자 사이로만 작성.
+        부연설명 없이 게시글 내용만 출력할 것.
+        """
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"AI 오류: {e}"
 
 # --- UI 구성 ---
 st.set_page_config(page_title="AI Post Assistant", layout="wide")
 
-# 카카오톡 플로팅 버튼 (위치 조정됨)
+# 카카오톡 링크
 KAKAO_LINK = "https://open.kakao.com/o/YOUR_LINK_HERE" 
 
 st.markdown(f"""
@@ -132,16 +115,19 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 st.title("🤖 AI 콘텐츠 생성 비서")
-st.markdown("##### :red[**사용 가능한 모든 모델을 동원하여 한도 초과(429) 에러를 자동으로 방어합니다.**]")
-st.markdown("""<small>gemini-3-flash-preview<br>gemini-2.5-flash-lite<br>gemini-3.1-flash-lite 외 모든 가용 모델</small>""", unsafe_allow_html=True)
+
+# [수정] SyntaxError 해결: 여러 줄 문자열은 반드시 따옴표 3개(""") 사용
+st.markdown("##### :red[**gemini-2.5-flash 한도 초과 시 아래 모델들 중에서 골라서 이용할 것**]")
+st.markdown("""<small>gemini-3-flash-preview<br>
+gemini-2.5-flash-lite<br>
+gemini-3.1-flash-lite</small>""", unsafe_allow_html=True)
 st.divider()
 
-# 성공 메시지 노출 보장 로직
 if st.session_state.success_msg:
     st.success(st.session_state.success_msg)
     st.session_state.success_msg = None 
 
-# 자동 생성 모드일 때만 새로고침 가동 (탭 튕김 방지)
+# 자동 생성 모드일 때만 새로고침 가동
 if st.session_state.auto_gen_mode:
     st_autorefresh(interval=60000, key="auto_worker")
 
@@ -151,7 +137,9 @@ with st.sidebar:
     st.header("⚙️ 엔진 컨트롤")
     st.toggle("✍️ AI 자동 생성 ON", key="auto_gen_mode", on_change=save_data)
     unused_count = len([item for item in st.session_state.queue if not item.get("used", False)])
-    st.markdown(f"""<div class="status-card"><b>대기 중 콘텐츠: {unused_count}개</b></div>""", unsafe_allow_html=True)
+    status_text = "생성 중..." if st.session_state.auto_gen_mode else "정지됨"
+    status_color = "#00BFFF" if st.session_state.auto_gen_mode else "#888"
+    st.markdown(f"""<div class="status-card"><b style="color:{status_color};">{status_text}</b><br><small>대기 중 콘텐츠: {unused_count}개</small></div>""", unsafe_allow_html=True)
     st.divider()
     if st.button("보관함 전체 비우기"): 
         st.session_state.queue = []
@@ -169,8 +157,10 @@ with t1:
         st.slider("글자 수 범위", 10, 500, key="char_range")
         st.selectbox("말투 설정", ["친절한 이웃", "딱딱한 비서", "친한 친구"], key="post_style")
         st.selectbox("사용할 AI 모델 선택", available_models, key="selected_model")
+    
     with col_mid:
         st.markdown('<div class="vertical-line"></div>', unsafe_allow_html=True)
+        
     with col_right:
         st.markdown("### 📅 스케줄설정")
         st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], key="target_days")
@@ -181,11 +171,13 @@ with t1:
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("💾 현재 설정값 저장하기", use_container_width=True):
-        save_data(); st.session_state.success_msg = "✅ 설정이 안전하게 저장되었습니다."; st.rerun()
+        save_data()
+        st.session_state.success_msg = "✅ 설정이 안전하게 저장되었습니다."
+        st.rerun()
 
     if st.button("✨ 즉시 AI 초안 생성", use_container_width=True, type="primary"):
         if st.session_state.topic_input:
-            with st.spinner("가용한 모든 모델을 조사하며 작성 중..."):
+            with st.spinner("AI가 작성 중입니다..."):
                 res = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
                 st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res, "used": False})
                 save_data(); st.session_state.success_msg = "✅ 초안 생성 완료!"; st.rerun()
@@ -218,17 +210,16 @@ with t2:
             with col_t: st.caption(f"🕒 {item['time']} | ID: {idx+1}")
             with col_c: st.markdown(f"<p style='text-align:right; color:#00BFFF; font-size:13px;'>{char_c}자</p>", unsafe_allow_html=True)
             
-            # 스크롤 방지용 자동 높이 계산 강화
-            lines = item['content'].count('\n') + (len(item['content']) // 40) + 2
+            lines = item['content'].count('\n') + (len(item['content']) // 42) + 2
             h = max(130, lines * 27)
-            edited = st.text_area("내용 수정", item['content'], key=f"ed_{tab_id}_{idx}", height=h)
+            edited = st.text_area("수정", item['content'], key=f"ed_{tab_id}_{idx}", height=h)
             if edited != item['content']:
                 st.session_state.queue[idx]['content'] = edited; save_data()
             
             c1, c2 = st.columns([3, 1])
             with c1:
-                js = f"navigator.clipboard.writeText({json.dumps(edited)})"
-                components.html(f"""<button onclick="{js}" style="background:#00BFFF; border:none; padding:8px; border-radius:5px; width:100%; cursor:pointer; font-weight:bold;">📋 텍스트 복사</button>""", height=45)
+                js_code = f"navigator.clipboard.writeText({json.dumps(edited)})"
+                components.html(f"""<button onclick="{js_code}" style="background:#00BFFF; border:none; padding:8px; border-radius:5px; width:100%; cursor:pointer; font-weight:bold;">📋 텍스트 복사</button>""", height=45)
             with c2:
                 if st.button("🗑️ 삭제", key=f"dl_{tab_id}_{idx}", use_container_width=True):
                     st.session_state.queue.pop(idx); save_data(); st.rerun()
@@ -242,4 +233,4 @@ with t2:
         for r_idx, item in reversed(used_list): render_queue_item(r_idx, item, "ud")
 
 st.divider()
-st.caption("© 2026 AI Post Assistant | All Models Fallback System Active")
+st.caption("© 2026 AI Post Assistant")
