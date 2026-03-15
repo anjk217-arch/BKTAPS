@@ -134,19 +134,20 @@ with t1:
         styles = ["친절한 이웃", "딱딱한 비서", "친한 친구"]
         st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
         
-        # [요청 반영] AI 모델 선택과 자동 생성 간격을 나란히 배치
-        sub_col1, sub_col2 = st.columns(2)
-        with sub_col1:
-            st.session_state.selected_model = st.selectbox("AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
-        with sub_col2:
-            minute_options = [i for i in range(10, 610, 10)] 
-            st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
+        # AI 모델 선택 (좌측 하단 유지)
+        st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
         
     with col2:
         st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
+        
+        # 시작/종료 시각
         cs, ce = st.columns(2)
         st.session_state.start_t = cs.time_input("가동 시작 시각", value=st.session_state.start_t)
         st.session_state.end_t = ce.time_input("가동 종료 시각", value=st.session_state.end_t)
+
+        # [이동 및 크기 조정] 자동 생성 간격을 가동 시각 아래에 풀 사이즈로 배치
+        minute_options = [i for i in range(10, 610, 10)] 
+        st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
 
     if st.button("💾 현재 설정값 저장하기", use_container_width=True):
         save_data()
@@ -227,6 +228,7 @@ with t2:
                     st.session_state.queue.pop(idx)
                     save_data(); st.rerun()
 
+    # 전체/사용전/사용후 탭 렌더링 (생략 없이 유지)
     with sub_tabs[0]:
         if not st.session_state.queue: st.info("보관된 콘텐츠가 없습니다.")
         else:
@@ -247,4 +249,4 @@ with t2:
             for real_idx, item in reversed(used_items): render_queue_item(real_idx, item)
 
 st.divider()
-st.caption(f"© 2026 AI Post Assistant | 요청하신 대로 레이아웃이 다시 배치되었습니다.")
+st.caption(f"© 2026 AI Post Assistant | 요청하신 대로 자동 생성 간격의 위치와 크기가 조정되었습니다.")
