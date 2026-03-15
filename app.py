@@ -104,8 +104,8 @@ st.markdown(f"""
     /* 카카오톡 플로팅 버튼 스타일 */
     .kakao-floating-btn {{
         position: fixed;
-        bottom: 30px;
-        right: 30px;
+        bottom: 80px;
+        right: 40px;
         width: 60px;
         height: 60px;
         background-color: #FEE500;
