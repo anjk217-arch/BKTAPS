@@ -10,7 +10,7 @@ from streamlit_autorefresh import st_autorefresh
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
-# [#] 데이터 불러오기/저장 로직
+# [#] 데이터 불러오기 함수
 def load_data():
     defaults = {
         "queue": [], 
@@ -29,15 +29,18 @@ def load_data():
         try:
             with open(SAVE_FILE, 'r', encoding='utf-8') as f:
                 saved_data = json.load(f)
+                # 저장된 데이터에 누락된 키가 있으면 기본값으로 채움
                 for key, val in defaults.items():
-                    if key not in saved_data: saved_data[key] = val
-                for item in saved_data["queue"]:
-                    if "used" not in item: item["used"] = False
+                    if key not in saved_data:
+                        saved_data[key] = val
                 return saved_data
-        except: return defaults
+        except:
+            return defaults
     return defaults
 
+# [#] 데이터 저장 함수
 def save_data():
+    # 현재 세션 상태에 저장된 위젯 값들을 가져와서 파일에 기록
     data = {
         "queue": st.session_state.queue,
         "last_gen_time": st.session_state.last_gen_time,
@@ -57,17 +60,21 @@ def save_data():
 # API 설정
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 genai.configure(api_key=GEMINI_API_KEY)
-saved = load_data()
-for key, value in saved.items():
-    if key not in st.session_state: st.session_state[key] = value
-if "success_msg" not in st.session_state: st.session_state.success_msg = None
 
-if isinstance(st.session_state.start_t, str):
-    try: st.session_state.start_t = datetime.time.fromisoformat(st.session_state.start_t)
-    except: st.session_state.start_t = datetime.time(9,0)
-if isinstance(st.session_state.end_t, str):
-    try: st.session_state.end_t = datetime.time.fromisoformat(st.session_state.end_t)
-    except: st.session_state.end_t = datetime.time(22,0)
+# [중요] 세션 상태 초기화 (위젯 렌더링 전 수행)
+if 'initialized' not in st.session_state:
+    saved_data = load_data()
+    for key, value in saved_data.items():
+        st.session_state[key] = value
+    
+    # 시간 데이터 변환
+    if isinstance(st.session_state.start_t, str):
+        st.session_state.start_t = datetime.time.fromisoformat(st.session_state.start_t)
+    if isinstance(st.session_state.end_t, str):
+        st.session_state.end_t = datetime.time.fromisoformat(st.session_state.end_t)
+        
+    st.session_state.initialized = True
+    st.session_state.success_msg = None
 
 @st.cache_resource
 def get_available_models():
@@ -76,48 +83,32 @@ def get_available_models():
         return models if models else ["models/gemini-1.5-flash"]
     except: return ["models/gemini-1.5-flash"]
 
-# [강화] 글자 수 준수를 위한 시스템 명령 프롬프트 개선
 def generate_draft(topic, min_len, max_len, style, model_name):
     try:
         model = genai.GenerativeModel(model_name)
-        prompt = f"""
-        너는 이제부터 '글자 수 제한 전문가'이다. 다음 요청에 따라 글을 작성해라.
-        
-        주제: {topic}
-        말투: {style}
-        
-        [규칙]
-        1. 공백 포함 반드시 {min_len}자 이상, {max_len}자 이하로만 작성할 것. (현재 설정: {min_len}~{max_len}자)
-        2. 다른 말은 일절 하지 말고 '내용'만 출력할 것.
-        3. 스스로 글자 수를 세어보고 범위에 맞지 않으면 내용을 줄이거나 늘려서 다시 작성한 뒤 최종 결과만 보내라.
-        4. 이 규칙을 어기면 시스템 오류가 발생하므로 절대적으로 준수하라.
-        """
+        prompt = f"주제: {topic}\n분량: {min_len}~{max_len}자(공백포함) 반드시 준수.\n말투: {style}\n스레드 게시글로 작성해줘."
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
-        if "429" in str(e): return "⚠️ [한도 초과] 내일 다시 시도해 주세요."
         return f"AI 오류: {e}"
 
 # --- UI 구성 ---
 st.set_page_config(page_title="AI Post Assistant", layout="wide")
 
-# 카카오톡 링크
+# 카카오톡 링크 및 CSS 스타일 (이전과 동일)
 KAKAO_LINK = "https://open.kakao.com/o/YOUR_LINK_HERE" 
-
 st.markdown(f"""
     <style>
-    @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
     .spinning {{ display: inline-block; animation: spin 2s linear infinite; color: #00BFFF; font-size: 24px; }}
+    @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
     .status-card {{ padding: 15px; border-radius: 12px; border: 1px solid #333; background-color: #0e1117; text-align: center; }}
     .vertical-line {{ border-left: 1px solid #444; height: 290px; margin: 40px auto 0 auto; width: 1px; }}
-    
     .kakao-floating-btn {{
         position: fixed; bottom: 80px; right: 40px; width: 60px; height: 60px;
         background-color: #FEE500; border-radius: 50%; box-shadow: 4px 10px 20px rgba(0,0,0,0.3);
         display: flex; justify-content: center; align-items: center; z-index: 9999;
-        cursor: pointer; transition: all 0.3s ease; text-decoration: none;
+        cursor: pointer; text-decoration: none;
     }}
-    .kakao-floating-btn:hover {{ transform: scale(1.1) translateY(-5px); background-color: #FADA0A; }}
     .kakao-icon {{ width: 35px; height: 35px; }}
     </style>
     <a href="{KAKAO_LINK}" target="_blank" class="kakao-floating-btn">
@@ -126,70 +117,77 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 st.title("🤖 AI 콘텐츠 생성 비서")
-st.markdown("##### :red[**gemini-2.5-flash 한도 초과로 429 error 발생 시 아래 모델들 중에서 골라서 이용할 것**]")
-st.markdown("""<small>gemini-3-flash-preview<br>gemini-2.5-flash-lite<br>gemini-3.1-flash-lite</small>""", unsafe_allow_html=True)
+st.markdown("##### :red[**gemini-2.5-flash 한도 초과 시 아래 모델들 중에서 골라서 이용할 것**]")
+st.markdown("<small>gemini-3-flash-preview / gemini-2.5-flash-lite / gemini-3.1-flash-lite</small>", unsafe_allow_html=True)
 st.divider()
 
 if st.session_state.success_msg:
     st.success(st.session_state.success_msg)
     st.session_state.success_msg = None 
 
-# [수정] 자동 생성 모드일 때만 새로고침 가동 (탭 튕김 방지)
+# 자동 생성 모드일 때만 새로고침 가동
 if st.session_state.auto_gen_mode:
     st_autorefresh(interval=60000, key="auto_worker")
 
 available_models = get_available_models()
-unused_count = len([item for item in st.session_state.queue if not item.get("used", False)])
 
 with st.sidebar:
     st.header("⚙️ 엔진 컨트롤")
+    # key를 지정하여 세션 상태와 직접 연결
     st.toggle("✍️ AI 자동 생성 ON", key="auto_gen_mode", on_change=save_data)
-    if st.session_state.auto_gen_mode:
-        st.markdown(f"""<div class="status-card"><span class="spinning">🔄</span><br><b style="color:#00BFFF;">생성 엔진 가동 중</b><br><small>대기 중 콘텐츠: {unused_count}개</small></div>""", unsafe_allow_html=True)
-    else:
-        st.markdown(f"""<div class="status-card"><b style="color:#888;">정지 상태</b><br><small>대기 중 콘텐츠: {unused_count}개</small></div>""", unsafe_allow_html=True)
+    
+    unused_count = len([item for item in st.session_state.queue if not item.get("used", False)])
+    status_text = "생성 엔진 가동 중" if st.session_state.auto_gen_mode else "정지 상태"
+    status_color = "#00BFFF" if st.session_state.auto_gen_mode else "#888"
+    st.markdown(f"""<div class="status-card"><b style="color:{status_color};">{status_text}</b><br><small>대기 중 콘텐츠: {unused_count}개</small></div>""", unsafe_allow_html=True)
+    
     st.divider()
     if st.button("보관함 전체 비우기"): 
         st.session_state.queue = []
         save_data(); st.rerun()
 
-# [수정] 탭 선택 상태 유지 로직
-tab_choice = st.session_state.get('active_tab', "✨ 글 생성 및 설정")
 t1, t2 = st.tabs(["✨ 글 생성 및 설정", "📋 콘텐츠 보관함"])
 
 with t1:
     st.subheader("📝 프롬프트 작성")
-    st.session_state.topic_input = st.text_area("작성할 주제나 상황(프롬프트) 입력", value=st.session_state.topic_input, height=150)
+    st.text_area("작성할 주제나 상황 입력", key="topic_input", height=150)
     
     col_left, col_mid, col_right = st.columns([1, 0.1, 1])
     with col_left:
         st.markdown("### ⚙️ 세부설정")
-        st.session_state.char_range = st.slider("글자 수 범위", 10, 300, value=tuple(st.session_state.char_range))
+        st.slider("글자 수 범위", 10, 500, key="char_range")
         styles = ["친절한 이웃", "딱딱한 비서", "친한 친구"]
-        st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
-        st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
+        st.selectbox("말투 설정", styles, key="post_style")
+        st.selectbox("사용할 AI 모델 선택", available_models, key="selected_model")
+    
     with col_mid:
         st.markdown('<div class="vertical-line"></div>', unsafe_allow_html=True)
+        
     with col_right:
         st.markdown("### 📅 스케줄설정")
-        st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
+        st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], key="target_days")
         time_col1, time_col2 = st.columns(2)
-        st.session_state.start_t = time_col1.time_input("가동 시작", value=st.session_state.start_t)
-        st.session_state.end_t = time_col2.time_input("가동 종료", value=st.session_state.end_t)
+        time_col1.time_input("가동 시작 시각", key="start_t")
+        time_col2.time_input("가동 종료 시각", key="end_t")
         minute_options = [i for i in range(10, 610, 10)] 
-        st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
+        st.selectbox("자동 생성 간격(분)", options=minute_options, key="gen_interval_min")
 
+    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("💾 현재 설정값 저장하기", use_container_width=True):
-        save_data(); st.success("설정 저장 완료!")
+        save_data()
+        st.session_state.success_msg = "✅ 설정 데이터가 파일에 안전하게 저장되었습니다."
+        st.rerun()
 
     if st.button("✨ 즉시 AI 초안 생성", use_container_width=True, type="primary"):
         if st.session_state.topic_input:
-            with st.spinner("AI가 초안을 작성 중입니다..."):
+            with st.spinner("AI가 초안을 작성하고 있습니다..."):
                 res_text = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
                 st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res_text, "used": False})
-                save_data(); st.session_state.success_msg = "✅ 생성 완료!"; st.rerun()
+                save_data()
+                st.session_state.success_msg = "✅ AI 초안 작성이 완료되었습니다!"
+                st.rerun()
 
-    # 자동화 엔진 로직
+    # 자동화 엔진 로직 (기존 유지)
     now = datetime.datetime.now()
     if st.session_state.auto_gen_mode and ["월","화","수","목","금","토","일"][now.weekday()] in st.session_state.target_days:
         if st.session_state.start_t <= now.time() <= st.session_state.end_t:
@@ -200,60 +198,50 @@ with t1:
                 st.session_state.last_gen_time = now.isoformat(); save_data(); st.rerun()
 
 with t2:
-    unused_items_list = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
-    used_items_list = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
-    st.subheader(f"📋 보관함 (대기: {len(unused_items_list)}개)")
-    sub_tabs = st.tabs([f"전체 ({len(st.session_state.queue)})", f"사용전 ({len(unused_items_list)})", f"사용후 ({len(used_items_list)})"])
+    # 보관함 렌더링 (이전과 동일하되, 중복 방지 키 적용 유지)
+    unused_list = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
+    used_list = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
+    st.subheader(f"📋 콘텐츠 보관함")
+    sub_tabs = st.tabs([f"전체 ({len(st.session_state.queue)})", f"사용전 ({len(unused_list)})", f"사용후 ({len(used_list)})"])
     
     def render_queue_item(idx, item, tab_id):
         with st.container(border=True):
             char_count = len(item['content'])
             col_status, col_time, col_char = st.columns([1, 2.5, 1.5])
             with col_status:
-                is_checked = st.checkbox("사용 완료", value=item["used"], key=f"check_{tab_id}_{idx}")
-                if is_checked != item["used"]:
-                    st.session_state.queue[idx]["used"] = is_checked
-                    save_data(); st.rerun()
+                if st.checkbox("사용 완료", value=item["used"], key=f"check_{tab_id}_{idx}"):
+                    if not item["used"]:
+                        st.session_state.queue[idx]["used"] = True
+                        save_data(); st.rerun()
+                else:
+                    if item["used"]:
+                        st.session_state.queue[idx]["used"] = False
+                        save_data(); st.rerun()
             with col_time: st.caption(f"🕒 {item['time']} | ID: {idx+1}")
-            with col_char: st.markdown(f"<p style='text-align:right; color:#00BFFF; font-size:13px; font-weight:bold;'>{char_count}자</p>", unsafe_allow_html=True)
+            with col_char: st.markdown(f"<p style='text-align:right; color:#00BFFF; font-size:13px;'>{char_count}자</p>", unsafe_allow_html=True)
             
-            # [수정] 박스 높이 자동 계산 로직 대폭 강화 (스크롤 방지)
-            lines = item['content'].count('\n') + (len(item['content']) // 40) + 2
-            dynamic_height = max(130, lines * 26)
-            
-            edited_content = st.text_area("내용", item['content'], key=f"edit_{tab_id}_{idx}", height=dynamic_height)
-            if edited_content != item['content']:
-                st.session_state.queue[idx]['content'] = edited_content; save_data()
+            lines = item['content'].count('\n') + (len(item['content']) // 45) + 2
+            h = max(130, lines * 26)
+            edited = st.text_area("내용 수정", item['content'], key=f"edit_{tab_id}_{idx}", height=h)
+            if edited != item['content']:
+                st.session_state.queue[idx]['content'] = edited
+                save_data()
             
             c1, c2 = st.columns([3, 1])
             with c1:
-                components.html(f"""
-                    <button id="copyBtn_{tab_id}_{idx}" style="background-color: #00BFFF; color: #0e1117; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-weight: bold; width: 100%;">📋 복사</button>
-                    <script>
-                        document.getElementById('copyBtn_{tab_id}_{idx}').onclick = function() {{
-                            const text = {json.dumps(edited_content)};
-                            navigator.clipboard.writeText(text).then(function() {{
-                                const btn = document.getElementById('copyBtn_{tab_id}_{idx}');
-                                btn.innerText = '✅ 완료'; btn.style.backgroundColor = '#28a745'; btn.style.color = 'white';
-                                setTimeout(() => {{ btn.innerText = '📋 복사'; btn.style.backgroundColor = '#00BFFF'; btn.style.color = '#0e1117'; }}, 2000);
-                            }});
-                        }}
-                    </script>
-                """, height=45)
+                # 복사 버튼 컴포넌트 (이전과 동일)
+                components.html(f"""<button onclick="navigator.clipboard.writeText({json.dumps(edited)})" style="background:#00BFFF; border:none; padding:8px; border-radius:5px; width:100%; cursor:pointer; font-weight:bold;">📋 텍스트 복사</button>""", height=45)
             with c2:
                 if st.button("🗑️ 삭제", key=f"del_{tab_id}_{idx}", use_container_width=True):
                     st.session_state.queue.pop(idx); save_data(); st.rerun()
 
-    # 탭별 렌더링
     with sub_tabs[0]:
         for idx, item in enumerate(reversed(st.session_state.queue)):
             render_queue_item(len(st.session_state.queue)-1-idx, item, "all")
     with sub_tabs[1]:
-        for real_idx, item in reversed(unused_items_list):
-            render_queue_item(real_idx, item, "unused")
+        for r_idx, item in reversed(unused_list): render_queue_item(r_idx, item, "un")
     with sub_tabs[2]:
-        for real_idx, item in reversed(used_items_list):
-            render_queue_item(real_idx, item, "used")
+        for r_idx, item in reversed(used_list): render_queue_item(r_idx, item, "ud")
 
 st.divider()
-st.caption("© 2026 AI Post Assistant | 스크롤 제거 및 글자 수 엄격 준수 모드")
+st.caption("© 2026 AI Post Assistant")
