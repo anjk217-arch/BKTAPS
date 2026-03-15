@@ -31,7 +31,6 @@ def load_data():
                 saved_data = json.load(f)
                 for key, val in defaults.items():
                     if key not in saved_data: saved_data[key] = val
-                # 하위 호환성: 기존 데이터에 'used' 키가 없는 경우 추가
                 for item in saved_data["queue"]:
                     if "used" not in item: item["used"] = False
                 return saved_data
@@ -101,13 +100,16 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🤖 AI 콘텐츠 생성 비서")
+
+# [요청 반영] 상단 안내 문구 및 모델 리스트 코드 추가
 st.markdown("##### :red[**gemini-2.5-flash 한도 초과로 429 error 발생 시 아래 모델들 중에서 골라서 이용할 것**]")
+st.markdown("""<small>gemini-3-flash-preview<br>gemini-2.5-flash-lite<br>gemini-3.1-flash-lite</small>""", unsafe_allow_html=True)
 st.divider()
 
 st_autorefresh(interval=60000, key="auto_worker")
 available_models = get_available_models()
 
-# [수정] 대기 중인(사용 전) 콘텐츠 카운트 로직 강화
+# 대기 중 콘텐츠 카운트
 unused_count = len([item for item in st.session_state.queue if not item.get("used", False)])
 
 with st.sidebar:
@@ -158,8 +160,8 @@ with t1:
                 res_text = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
                 st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res_text, "used": False})
                 save_data()
-                # [수정] st.toast 사용 후 rerun하여 사이드바 카운트 즉시 업데이트
-                st.toast("✅ 초안 작성이 완료되어 보관함에 추가되었습니다!")
+                # [수정] 성공 알림을 toast로 띄워 새로고침 후에도 보이게 함
+                st.toast("✅ AI 초안 작성이 완료되었습니다!")
                 time.sleep(0.5)
                 st.rerun()
         else:
@@ -178,11 +180,11 @@ with t1:
                 st.rerun()
 
 with t2:
-    st.subheader("📋 콘텐츠 보관함")
-    # [추가] 각 탭 이름 옆에 현재 개수를 표시하여 직관성 높임
+    # 탭별 개수 계산
     unused_items_list = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
     used_items_list = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
     
+    st.subheader("📋 콘텐츠 보관함")
     sub_tabs = st.tabs([f"전체 ({len(st.session_state.queue)})", f"사용전 ({len(unused_items_list)})", f"사용후 ({len(used_items_list)})"])
     
     def render_queue_item(idx, item, tab_id):
@@ -232,6 +234,7 @@ with t2:
                     save_data()
                     st.rerun()
 
+    # 탭별 렌더링 로직 (유지)
     with sub_tabs[0]: # 전체
         if not st.session_state.queue: st.info("보관된 콘텐츠가 없습니다.")
         else:
