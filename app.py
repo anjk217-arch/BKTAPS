@@ -12,7 +12,7 @@ SAVE_FILE = "moneydock_data.json"
 # [#] 데이터 불러오기/저장 로직
 def load_data():
     defaults = {
-        "queue": [], # 각 아이템은 {"time": str, "content": str, "used": bool} 구조
+        "queue": [], 
         "last_gen_time": None,
         "gen_interval_min": 60,
         "selected_model": "models/gemini-1.5-flash",
@@ -30,7 +30,6 @@ def load_data():
                 saved_data = json.load(f)
                 for key, val in defaults.items():
                     if key not in saved_data: saved_data[key] = val
-                # 하위 호환성: 기존 데이터에 'used' 키가 없는 경우 추가
                 for item in saved_data["queue"]:
                     if "used" not in item: item["used"] = False
                 return saved_data
@@ -92,6 +91,8 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🤖 AI 콘텐츠 생성 비서")
+st.markdown("##### :red[**gemini-2.5-flash 한도 초과로 429 error 발생시 아래 모델들 중에서 골라서 이용할 것**]")
+st.markdown("""<small>gemini-3-flash-preview<br>gemini-2.5-flash-lite<br>gemini-3.1-flash-lite</small>""", unsafe_allow_html=True)
 st.divider()
 
 st_autorefresh(interval=60000, key="auto_worker")
@@ -100,7 +101,6 @@ with st.sidebar:
     st.header("⚙️ 엔진 컨트롤")
     st.toggle("✍️ AI 자동 생성 ON", key="auto_gen_mode", on_change=save_data)
     
-    # 미사용 게시글 수 계산
     unused_count = len([item for item in st.session_state.queue if not item.get("used", False)])
     if st.session_state.auto_gen_mode:
         st.markdown(f"""<div class="status-card"><span class="spinning">🔄</span><br><b style="color:#00BFFF;">생성 엔진 가동 중</b><br><small>대기 중 콘텐츠: {unused_count}개</small></div>""", unsafe_allow_html=True)
@@ -108,9 +108,7 @@ with st.sidebar:
         st.markdown(f"""<div class="status-card"><b style="color:#888;">정지 상태</b><br><small>대기 중 콘텐츠: {unused_count}개</small></div>""", unsafe_allow_html=True)
 
     st.divider()
-    minute_options = [i for i in range(10, 610, 10)] 
-    st.session_state.gen_interval_min = st.selectbox("생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
-    
+    # [이동] 생성 간격 설정이 메인 탭으로 이동하여 사이드바에서는 제거되었습니다.
     if st.button("보관함 전체 비우기", key="sidebar_clear_btn"): 
         st.session_state.queue = []
         save_data()
@@ -125,14 +123,15 @@ with t1:
     with col1:
         st.session_state.char_range = st.slider("글자 수 범위", 10, 300, value=tuple(st.session_state.char_range))
         
-        # [수정] 말투 설정 옵션 변경
         styles = ["친절한 이웃", "딱딱한 비서", "친한 친구"]
-        current_style = st.session_state.get("post_style", styles[0])
-        if current_style not in styles: current_style = styles[0]
-        st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(current_style))
+        st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
         
         models = ["models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-1.5-flash-8b"]
         st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", models, index=models.index(st.session_state.selected_model) if st.session_state.selected_model in models else 0)
+
+        # [이동 완료] 사이드바에서 이 섹션으로 이동된 생성 간격 설정
+        minute_options = [i for i in range(10, 610, 10)] 
+        st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
         
     with col2:
         st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
@@ -158,7 +157,7 @@ with t1:
                 st.session_state.queue.append({
                     "time": datetime.datetime.now().strftime("%m-%d %H:%M"), 
                     "content": res_text,
-                    "used": False # 신규 글은 사용전 상태
+                    "used": False
                 })
                 save_data(); st.success("초안이 보관함에 추가되었습니다.")
 
@@ -178,7 +177,6 @@ with t1:
 
 with t2:
     st.subheader("📋 콘텐츠 보관함")
-    # [수정] 전체, 사용전, 사용후 탭 구분
     sub_tabs = st.tabs(["전체", "사용전", "사용후"])
     
     def render_queue_item(idx, item):
@@ -189,9 +187,7 @@ with t2:
             edited_content = st.text_area("콘텐츠 수정", item['content'], key=f"edit_{idx}", height=100)
             st.session_state.queue[idx]['content'] = edited_content
             
-            # 복사 버튼 및 사용 완료 처리 UI
             c1, c2, c3 = st.columns([2, 1, 1])
-            
             with c1:
                 components.html(f"""
                     <button id="copyBtn_{idx}" style="
@@ -218,48 +214,37 @@ with t2:
             
             with c2:
                 if not item["used"]:
-                    if st.button("사용 완료 처리", key=f"use_{idx}", use_container_width=True):
+                    if st.button("사용 완료", key=f"use_{idx}", use_container_width=True):
                         st.session_state.queue[idx]["used"] = True
-                        save_data()
-                        st.rerun()
+                        save_data(); st.rerun()
                 else:
-                    if st.button("사용 전으로 복구", key=f"unuse_{idx}", use_container_width=True):
+                    if st.button("복구", key=f"unuse_{idx}", use_container_width=True):
                         st.session_state.queue[idx]["used"] = False
-                        save_data()
-                        st.rerun()
+                        save_data(); st.rerun()
             
             with c3:
                 if st.button("🗑️ 삭제", key=f"del_{idx}", use_container_width=True):
                     st.session_state.queue.pop(idx)
-                    save_data()
-                    st.rerun()
+                    save_data(); st.rerun()
 
-    # 전체 탭
     with sub_tabs[0]:
-        if not st.session_state.queue:
-            st.info("보관된 콘텐츠가 없습니다.")
+        if not st.session_state.queue: st.info("보관된 콘텐츠가 없습니다.")
         else:
             for idx, item in enumerate(reversed(st.session_state.queue)):
                 real_idx = len(st.session_state.queue) - 1 - idx
                 render_queue_item(real_idx, item)
 
-    # 사용전 탭
     with sub_tabs[1]:
         unused_items = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
-        if not unused_items:
-            st.info("사용 전인 콘텐츠가 없습니다.")
+        if not unused_items: st.info("사용 전인 콘텐츠가 없습니다.")
         else:
-            for real_idx, item in reversed(unused_items):
-                render_queue_item(real_idx, item)
+            for real_idx, item in reversed(unused_items): render_queue_item(real_idx, item)
 
-    # 사용후 탭
     with sub_tabs[2]:
         used_items = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
-        if not used_items:
-            st.info("사용 완료된 콘텐츠가 없습니다.")
+        if not used_items: st.info("사용 완료된 콘텐츠가 없습니다.")
         else:
-            for real_idx, item in reversed(used_items):
-                render_queue_item(real_idx, item)
+            for real_idx, item in reversed(used_items): render_queue_item(real_idx, item)
 
 st.divider()
-st.caption(f"© 2026 AI Post Assistant | 말투 변경 및 사용 여부 탭 구분이 적용되었습니다.")
+st.caption(f"© 2026 AI Post Assistant | 생성 간격 설정이 메인 화면으로 통합되었습니다.")
