@@ -9,7 +9,7 @@ from streamlit_autorefresh import st_autorefresh
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
-# [#] 데이터 불러오기/저장 로직
+# [#] 데이터 불러오기/저장 로직 (기존 유지)
 def load_data():
     defaults = {
         "queue": [], 
@@ -146,13 +146,19 @@ with t1:
     st.divider()
     st.subheader("📝 프롬프트 작성")
     st.session_state.topic_input = st.text_area("작성할 주제나 상황 입력", value=st.session_state.topic_input, height=150)
+    
+    # [수정] 즉시 생성 시 성공 메시지 복구
     if st.button("✨ 즉시 AI 초안 생성", use_container_width=True, type="primary"):
         if st.session_state.topic_input:
-            with st.spinner("작성 중..."):
+            with st.spinner("AI가 초안을 작성하고 있습니다..."):
                 res_text = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
                 st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res_text, "used": False})
-                save_data(); st.success("추가되었습니다.")
-                st.rerun()
+                save_data()
+                # st.success를 호출하고 st.rerun을 제거하여 메시지가 보이게 함
+                # 대신 데이터는 이미 session_state에 들어갔으므로 다음 조작 시 반영됨
+                st.success("✅ 초안 작성이 완료되었습니다! 보관함 탭에서 확인하세요.")
+        else:
+            st.warning("주제를 입력해 주세요.")
 
     # 자동화 엔진 로직
     now = datetime.datetime.now()
@@ -162,18 +168,17 @@ with t1:
             if lg is None or (now - datetime.datetime.fromisoformat(lg)).total_seconds() >= st.session_state.gen_interval_min * 60:
                 new_txt = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model)
                 st.session_state.queue.append({"time": now.strftime("%m-%d %H:%M"), "content": new_txt, "used": False})
-                st.session_state.last_gen_time = now.isoformat(); save_data(); st.rerun()
+                st.session_state.last_gen_time = now.isoformat(); save_data()
+                st.toast("✍️ 새로운 자동 생성 초안이 보관함에 추가되었습니다!")
 
 with t2:
     st.subheader("📋 콘텐츠 보관함")
     sub_tabs = st.tabs(["전체", "사용전", "사용후"])
     
-    # [수정] tab_id 인자를 추가하여 중복 키 에러 방지
     def render_queue_item(idx, item, tab_id):
         with st.container(border=True):
             col_status, col_time = st.columns([1, 4])
             with col_status:
-                # [수정] key에 tab_id를 포함시켜 고유하게 만듦
                 is_checked = st.checkbox("사용 완료", value=item["used"], key=f"check_{tab_id}_{idx}")
                 if is_checked != item["used"]:
                     st.session_state.queue[idx]["used"] = is_checked
@@ -182,7 +187,6 @@ with t2:
             with col_time:
                 st.caption(f"🕒 {item['time']} | ID: {idx+1}")
             
-            # [수정] 다른 위젯들의 키도 tab_id를 붙여 안전하게 처리
             edited_content = st.text_area("콘텐츠 수정", item['content'], key=f"edit_{tab_id}_{idx}", height=100)
             if edited_content != item['content']:
                 st.session_state.queue[idx]['content'] = edited_content
@@ -218,20 +222,19 @@ with t2:
                     save_data()
                     st.rerun()
 
+    # 탭별 렌더링 로직 (유지)
     with sub_tabs[0]: # 전체
         if not st.session_state.queue: st.info("보관된 콘텐츠가 없습니다.")
         else:
             for idx, item in enumerate(reversed(st.session_state.queue)):
                 real_idx = len(st.session_state.queue) - 1 - idx
                 render_queue_item(real_idx, item, "all")
-
     with sub_tabs[1]: # 사용전
         unused_items = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
         if not unused_items: st.info("사용 전인 콘텐츠가 없습니다.")
         else:
             for real_idx, item in reversed(unused_items):
                 render_queue_item(real_idx, item, "unused")
-
     with sub_tabs[2]: # 사용후
         used_items = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
         if not used_items: st.info("사용 완료된 콘텐츠가 없습니다.")
