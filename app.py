@@ -63,6 +63,10 @@ saved = load_data()
 for key, value in saved.items():
     if key not in st.session_state: st.session_state[key] = value
 
+# 성공 메시지 플래그 초기화 (저장되지 않는 휘발성 세션)
+if "success_msg" not in st.session_state:
+    st.session_state.success_msg = None
+
 if isinstance(st.session_state.start_t, str):
     try: st.session_state.start_t = datetime.time.fromisoformat(st.session_state.start_t)
     except: st.session_state.start_t = datetime.time(9,0)
@@ -101,10 +105,15 @@ st.markdown("""
 
 st.title("🤖 AI 콘텐츠 생성 비서")
 
-# [요청 반영] 상단 안내 문구 및 모델 리스트 코드 추가
+# [요청 반영] 대체 모델 안내 문구 및 리스트
 st.markdown("##### :red[**gemini-2.5-flash 한도 초과로 429 error 발생 시 아래 모델들 중에서 골라서 이용할 것**]")
 st.markdown("""<small>gemini-3-flash-preview<br>gemini-2.5-flash-lite<br>gemini-3.1-flash-lite</small>""", unsafe_allow_html=True)
 st.divider()
+
+# [성공 메시지 출력 로직] 새로고침 후에도 살아남은 메시지가 있다면 표시
+if st.session_state.success_msg:
+    st.success(st.session_state.success_msg)
+    st.session_state.success_msg = None # 표시 후 초기화
 
 st_autorefresh(interval=60000, key="auto_worker")
 available_models = get_available_models()
@@ -160,9 +169,8 @@ with t1:
                 res_text = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
                 st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res_text, "used": False})
                 save_data()
-                # [수정] 성공 알림을 toast로 띄워 새로고침 후에도 보이게 함
-                st.toast("✅ AI 초안 작성이 완료되었습니다!")
-                time.sleep(0.5)
+                # [핵심] 메시지를 세션에 저장하고 리런
+                st.session_state.success_msg = "✅ AI 초안 작성이 완료되었습니다! 보관함 탭을 확인해 보세요."
                 st.rerun()
         else:
             st.warning("주제를 입력해 주세요.")
@@ -176,11 +184,10 @@ with t1:
                 new_txt = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model)
                 st.session_state.queue.append({"time": now.strftime("%m-%d %H:%M"), "content": new_txt, "used": False})
                 st.session_state.last_gen_time = now.isoformat(); save_data()
-                st.toast("✍️ 새로운 자동 생성 초안이 추가되었습니다!")
+                st.session_state.success_msg = "✍️ 새로운 자동 생성 초안이 보관함에 추가되었습니다!"
                 st.rerun()
 
 with t2:
-    # 탭별 개수 계산
     unused_items_list = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
     used_items_list = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
     
@@ -234,7 +241,6 @@ with t2:
                     save_data()
                     st.rerun()
 
-    # 탭별 렌더링 로직 (유지)
     with sub_tabs[0]: # 전체
         if not st.session_state.queue: st.info("보관된 콘텐츠가 없습니다.")
         else:
