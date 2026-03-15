@@ -69,6 +69,14 @@ if isinstance(st.session_state.end_t, str):
     try: st.session_state.end_t = datetime.time.fromisoformat(st.session_state.end_t)
     except: st.session_state.end_t = datetime.time(22,0)
 
+# [복구] 원래 코드에 있던 모델 목록 동적 불러오기 함수
+@st.cache_resource
+def get_available_models():
+    try:
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        return models if models else ["models/gemini-1.5-flash"]
+    except: return ["models/gemini-1.5-flash"]
+
 def generate_draft(topic, min_len, max_len, style, model_name):
     try:
         model = genai.GenerativeModel(model_name)
@@ -91,11 +99,13 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🤖 AI 콘텐츠 생성 비서")
-st.markdown("##### :red[**gemini-2.5-flash 한도 초과로 429 error 발생시 아래 모델들 중에서 골라서 이용할 것**]")
+# [복구] 원래 코드에 있던 모델 관련 안내 문구
+st.markdown("##### :red[**gemini-2.5-flash 한도 초과로 429 error 발생 시 아래 모델들 중에서 골라서 이용할 것**]")
 st.markdown("""<small>gemini-3-flash-preview<br>gemini-2.5-flash-lite<br>gemini-3.1-flash-lite</small>""", unsafe_allow_html=True)
 st.divider()
 
 st_autorefresh(interval=60000, key="auto_worker")
+available_models = get_available_models()
 
 with st.sidebar:
     st.header("⚙️ 엔진 컨트롤")
@@ -108,7 +118,6 @@ with st.sidebar:
         st.markdown(f"""<div class="status-card"><b style="color:#888;">정지 상태</b><br><small>대기 중 콘텐츠: {unused_count}개</small></div>""", unsafe_allow_html=True)
 
     st.divider()
-    # [이동] 생성 간격 설정이 메인 탭으로 이동하여 사이드바에서는 제거되었습니다.
     if st.button("보관함 전체 비우기", key="sidebar_clear_btn"): 
         st.session_state.queue = []
         save_data()
@@ -126,12 +135,13 @@ with t1:
         styles = ["친절한 이웃", "딱딱한 비서", "친한 친구"]
         st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
         
-        models = ["models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-1.5-flash-8b"]
-        st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", models, index=models.index(st.session_state.selected_model) if st.session_state.selected_model in models else 0)
-
-        # [이동 완료] 사이드바에서 이 섹션으로 이동된 생성 간격 설정
-        minute_options = [i for i in range(10, 610, 10)] 
-        st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
+        # [수정] AI 모델 선택과 생성 간격을 한 줄에 나란히 배치
+        sub_col1, sub_col2 = st.columns(2)
+        with sub_col1:
+            st.session_state.selected_model = st.selectbox("AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
+        with sub_col2:
+            minute_options = [i for i in range(10, 610, 10)] 
+            st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
         
     with col2:
         st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
@@ -247,4 +257,4 @@ with t2:
             for real_idx, item in reversed(used_items): render_queue_item(real_idx, item)
 
 st.divider()
-st.caption(f"© 2026 AI Post Assistant | 생성 간격 설정이 메인 화면으로 통합되었습니다.")
+st.caption(f"© 2026 AI Post Assistant | 모델 목록 복구 및 레이아웃 조정이 완료되었습니다.")
