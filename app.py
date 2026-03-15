@@ -129,17 +129,18 @@ with t1:
     st.subheader("⚙️ 세부 스케줄 및 스타일 설정")
     col1, col2 = st.columns(2)
     with col1:
-        # 모든 위젯을 개별 줄에 배치하여 너비를 통일했습니다.
         st.session_state.char_range = st.slider("글자 수 범위", 10, 300, value=tuple(st.session_state.char_range))
         
         styles = ["친절한 이웃", "딱딱한 비서", "친한 친구"]
         st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
         
-        # [복구 및 크기 조정] AI 모델 선택과 간격 설정을 각각 한 줄씩 배치하여 가로 길이를 맞춤
-        st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
-        
-        minute_options = [i for i in range(10, 610, 10)] 
-        st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
+        # [요청 반영] AI 모델 선택과 자동 생성 간격을 나란히 배치
+        sub_col1, sub_col2 = st.columns(2)
+        with sub_col1:
+            st.session_state.selected_model = st.selectbox("AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
+        with sub_col2:
+            minute_options = [i for i in range(10, 610, 10)] 
+            st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
         
     with col2:
         st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
@@ -193,6 +194,7 @@ with t2:
                     <button id="copyBtn_{idx}" style="
                         background-color: #00BFFF; color: #0e1117; border: none; padding: 8px 15px;
                         border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; width: 100%;
+                        transition: 0.3s;
                     ">📋 텍스트 복사</button>
                     <script>
                         document.getElementById('copyBtn_{idx}').onclick = function() {{
@@ -245,4 +247,4 @@ with t2:
             for real_idx, item in reversed(used_items): render_queue_item(real_idx, item)
 
 st.divider()
-st.caption(f"© 2026 AI Post Assistant | 모든 설정 항목의 크기와 정렬이 조정되었습니다.")
+st.caption(f"© 2026 AI Post Assistant | 요청하신 대로 레이아웃이 다시 배치되었습니다.")
