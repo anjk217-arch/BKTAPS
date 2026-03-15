@@ -69,6 +69,7 @@ if isinstance(st.session_state.end_t, str):
     try: st.session_state.end_t = datetime.time.fromisoformat(st.session_state.end_t)
     except: st.session_state.end_t = datetime.time(22,0)
 
+# 모델 목록 동적 불러오기
 @st.cache_resource
 def get_available_models():
     try:
@@ -94,8 +95,6 @@ st.markdown("""
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .spinning { display: inline-block; animation: spin 2s linear infinite; color: #00BFFF; font-size: 24px; }
     .status-card { padding: 15px; border-radius: 12px; border: 1px solid #333; background-color: #0e1117; text-align: center; }
-    
-    /* 세로 구분선: 높이를 290px로 줄여 위젯 하단부와 맞춤 */
     .vertical-line {
         border-left: 1px solid #444;
         height: 290px; 
@@ -140,7 +139,6 @@ with t1:
         
         styles = ["친절한 이웃", "딱딱한 비서", "친한 친구"]
         st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
-        
         st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
     
     with col_mid:
@@ -157,7 +155,6 @@ with t1:
         minute_options = [i for i in range(10, 610, 10)] 
         st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
 
-    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("💾 현재 설정값 저장하기", use_container_width=True):
         save_data()
         st.success("설정 데이터가 안전하게 저장되었습니다.")
@@ -190,19 +187,27 @@ with t2:
     
     def render_queue_item(idx, item):
         with st.container(border=True):
-            status_label = "✅ 사용 완료" if item["used"] else "⏳ 사용 전"
-            st.caption(f"🕒 생성 시각: {item['time']} | 상태: {status_label}")
+            # 체크박스로 상태 변경 (on_change를 사용하여 즉시 반영)
+            col_status, col_time = st.columns([1, 4])
+            with col_status:
+                # [변경 포인트] 체크박스 도입
+                is_checked = st.checkbox("사용 완료", value=item["used"], key=f"check_{idx}")
+                if is_checked != item["used"]:
+                    st.session_state.queue[idx]["used"] = is_checked
+                    save_data()
+                    st.rerun()
+            with col_time:
+                st.caption(f"🕒 생성 시각: {item['time']} | ID: {idx+1}")
             
             edited_content = st.text_area("콘텐츠 수정", item['content'], key=f"edit_{idx}", height=100)
             st.session_state.queue[idx]['content'] = edited_content
             
-            c1, c2, c3 = st.columns([2, 1, 1])
+            c1, c2 = st.columns([3, 1])
             with c1:
                 components.html(f"""
                     <button id="copyBtn_{idx}" style="
                         background-color: #00BFFF; color: #0e1117; border: none; padding: 8px 15px;
                         border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; width: 100%;
-                        transition: 0.3s;
                     ">📋 텍스트 복사</button>
                     <script>
                         document.getElementById('copyBtn_{idx}').onclick = function() {{
@@ -222,36 +227,31 @@ with t2:
                     </script>
                 """, height=45)
             with c2:
-                if not item["used"]:
-                    if st.button("사용 완료", key=f"use_{idx}", use_container_width=True):
-                        st.session_state.queue[idx]["used"] = True
-                        save_data(); st.rerun()
-                else:
-                    if st.button("복구", key=f"unuse_{idx}", use_container_width=True):
-                        st.session_state.queue[idx]["used"] = False
-                        save_data(); st.rerun()
-            with c3:
                 if st.button("🗑️ 삭제", key=f"del_{idx}", use_container_width=True):
                     st.session_state.queue.pop(idx)
-                    save_data(); st.rerun()
+                    save_data()
+                    st.rerun()
 
-    # 탭별 렌더링 로직 (생략 없이 유지)
-    with sub_tabs[0]:
+    with sub_tabs[0]: # 전체
         if not st.session_state.queue: st.info("보관된 콘텐츠가 없습니다.")
         else:
             for idx, item in enumerate(reversed(st.session_state.queue)):
                 real_idx = len(st.session_state.queue) - 1 - idx
                 render_queue_item(real_idx, item)
-    with sub_tabs[1]:
+
+    with sub_tabs[1]: # 사용전
         unused_items = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
         if not unused_items: st.info("사용 전인 콘텐츠가 없습니다.")
         else:
-            for real_idx, item in reversed(unused_items): render_queue_item(real_idx, item)
-    with sub_tabs[2]:
+            for real_idx, item in reversed(unused_items):
+                render_queue_item(real_idx, item)
+
+    with sub_tabs[2]: # 사용후
         used_items = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
         if not used_items: st.info("사용 완료된 콘텐츠가 없습니다.")
         else:
-            for real_idx, item in reversed(used_items): render_queue_item(real_idx, item)
+            for real_idx, item in reversed(used_items):
+                render_queue_item(real_idx, item)
 
 st.divider()
-st.caption(f"© 2026 AI Post Assistant | 세로 구분선의 높이가 위젯 하단부와 정렬되었습니다.")
+st.caption(f"© 2026 AI Post Assistant | 체크박스를 통해 사용 여부를 직관적으로 관리할 수 있습니다.")
