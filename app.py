@@ -115,16 +115,19 @@ with st.sidebar:
 t1, t2 = st.tabs(["✨ 글 생성 및 설정", "📋 콘텐츠 보관함"])
 
 with t1:
-    # [변경] 세부 스케줄 및 스타일 설정을 위로 배치
+    # [섹션 1] 세부 스케줄 및 스타일 설정
     st.subheader("⚙️ 세부 스케줄 및 스타일 설정")
     col1, col2 = st.columns(2)
     with col1:
         st.session_state.char_range = st.slider("글자 수 범위", 10, 300, value=tuple(st.session_state.char_range))
-        # [삭제] 머니독 스타일 및 유도형 삭제
         styles = ["전문적 시황 분석", "친절한 이웃"]
         current_style = st.session_state.get("post_style", styles[0])
         if current_style not in styles: current_style = styles[0]
         st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(current_style))
+        
+        # [이동] AI 모델 선택 항목을 이 섹션으로 옮겼습니다.
+        models = ["models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-1.5-flash-8b"]
+        st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", models, index=models.index(st.session_state.selected_model) if st.session_state.selected_model in models else 0)
         
     with col2:
         st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
@@ -138,12 +141,9 @@ with t1:
 
     st.divider()
 
-    # [변경] AI 모델 및 주제 설정을 아래로 배치
-    st.subheader("🤖 AI 모델 및 주제 설정")
-    models = ["models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-1.5-flash-8b"]
-    st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", models, index=models.index(st.session_state.selected_model) if st.session_state.selected_model in models else 0)
-    
-    st.session_state.topic_input = st.text_area("작성할 주제나 상황을 입력하세요", value=st.session_state.topic_input, height=150)
+    # [섹션 2] 프롬프트 작성 (제목 변경 및 모델 선택 삭제)
+    st.subheader("📝 프롬프트 작성")
+    st.session_state.topic_input = st.text_area("작성할 주제나 상황(프롬프트)을 입력하세요", value=st.session_state.topic_input, height=150)
     
     if st.button("✨ 즉시 AI 초안 생성", use_container_width=True, type="primary"):
         if not st.session_state.topic_input: st.warning("주제를 입력해 주세요.")
@@ -176,7 +176,7 @@ with t2:
                 edited_content = st.text_area("콘텐츠 수정", item['content'], key=f"edit_{real_idx}", height=120)
                 st.session_state.queue[real_idx]['content'] = edited_content
                 
-                # 복사 버튼
+                # 복사 버튼 구성 (JavaScript 활용)
                 components.html(f"""
                     <button id="copyBtn_{real_idx}" style="
                         background-color: #00BFFF;
@@ -213,4 +213,4 @@ with t2:
                     save_data(); st.rerun()
 
 st.divider()
-st.caption(f"© 2026 AI Post Assistant | 요청하신 표준어 및 구조 변경이 완료되었습니다.")
+st.caption(f"© 2026 AI Post Assistant | 섹션 순서 및 모델 선택 위치 조정이 완료되었습니다.")
