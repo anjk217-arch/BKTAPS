@@ -63,7 +63,7 @@ saved = load_data()
 for key, value in saved.items():
     if key not in st.session_state: st.session_state[key] = value
 
-# 성공 메시지 플래그 초기화 (저장되지 않는 휘발성 세션)
+# 성공 메시지 플래그 초기화
 if "success_msg" not in st.session_state:
     st.session_state.success_msg = None
 
@@ -105,20 +105,17 @@ st.markdown("""
 
 st.title("🤖 AI 콘텐츠 생성 비서")
 
-# [요청 반영] 대체 모델 안내 문구 및 리스트
 st.markdown("##### :red[**gemini-2.5-flash 한도 초과로 429 error 발생 시 아래 모델들 중에서 골라서 이용할 것**]")
 st.markdown("""<small>gemini-3-flash-preview<br>gemini-2.5-flash-lite<br>gemini-3.1-flash-lite</small>""", unsafe_allow_html=True)
 st.divider()
 
-# [성공 메시지 출력 로직] 새로고침 후에도 살아남은 메시지가 있다면 표시
 if st.session_state.success_msg:
     st.success(st.session_state.success_msg)
-    st.session_state.success_msg = None # 표시 후 초기화
+    st.session_state.success_msg = None 
 
 st_autorefresh(interval=60000, key="auto_worker")
 available_models = get_available_models()
 
-# 대기 중 콘텐츠 카운트
 unused_count = len([item for item in st.session_state.queue if not item.get("used", False)])
 
 with st.sidebar:
@@ -138,44 +135,53 @@ with st.sidebar:
 t1, t2 = st.tabs(["✨ 글 생성 및 설정", "📋 콘텐츠 보관함"])
 
 with t1:
+    # [변경] 프롬프트 작성 섹션을 상단으로 이동
+    st.subheader("📝 프롬프트 작성")
+    st.session_state.topic_input = st.text_area("작성할 주제나 상황(프롬프트)을 입력하세요", value=st.session_state.topic_input, height=150)
+    
+    st.divider()
+
+    # [변경] 세부설정 및 스케줄설정 섹션을 아래로 이동
     col_left, col_mid, col_right = st.columns([1, 0.1, 1])
+    
     with col_left:
         st.markdown("### ⚙️ 세부설정")
         st.session_state.char_range = st.slider("글자 수 범위", 10, 300, value=tuple(st.session_state.char_range))
         styles = ["친절한 이웃", "딱딱한 비서", "친한 친구"]
         st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
         st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
+    
     with col_mid:
         st.markdown('<div class="vertical-line"></div>', unsafe_allow_html=True)
+        
     with col_right:
         st.markdown("### 📅 스케줄설정")
         st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
-        cs, ce = st.columns(2)
-        st.session_state.start_t = cs.time_input("가동 시작 시각", value=st.session_state.start_t)
-        st.session_state.end_t = ce.time_input("가동 종료 시각", value=st.session_state.end_t)
+        time_col1, time_col2 = st.columns(2)
+        st.session_state.start_t = time_col1.time_input("가동 시작 시각", value=st.session_state.start_t)
+        st.session_state.end_t = time_col2.time_input("가동 종료 시각", value=st.session_state.end_t)
         minute_options = [i for i in range(10, 610, 10)] 
         st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
 
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # [변경] 버튼 배치 순서: 설정값 저장 -> AI 초안 생성
     if st.button("💾 현재 설정값 저장하기", use_container_width=True):
         save_data()
-        st.success("설정 데이터가 저장되었습니다.")
-    st.divider()
-    st.subheader("📝 프롬프트 작성")
-    st.session_state.topic_input = st.text_area("작성할 주제나 상황 입력", value=st.session_state.topic_input, height=150)
-    
+        st.success("설정 데이터가 안전하게 저장되었습니다.")
+
     if st.button("✨ 즉시 AI 초안 생성", use_container_width=True, type="primary"):
         if st.session_state.topic_input:
             with st.spinner("AI가 초안을 작성하고 있습니다..."):
                 res_text = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
                 st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res_text, "used": False})
                 save_data()
-                # [핵심] 메시지를 세션에 저장하고 리런
                 st.session_state.success_msg = "✅ AI 초안 작성이 완료되었습니다! 보관함 탭을 확인해 보세요."
                 st.rerun()
         else:
             st.warning("주제를 입력해 주세요.")
 
-    # 자동화 엔진 로직
+    # 자동화 엔진 로직 유지
     now = datetime.datetime.now()
     if ["월","화","수","목","금","토","일"][now.weekday()] in st.session_state.target_days and st.session_state.start_t <= now.time() <= st.session_state.end_t:
         if st.session_state.auto_gen_mode:
