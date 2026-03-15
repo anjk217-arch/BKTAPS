@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components  # [추가] 복사 기능을 위한 도구
 import google.generativeai as genai
 import datetime
 import json
@@ -8,7 +9,7 @@ from streamlit_autorefresh import st_autorefresh
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
-# [#] 데이터 불러오기/저장 로직 (기존 유지)
+# [#] 데이터 불러오기/저장 로직 (기존 동일)
 def load_data():
     defaults = {
         "queue": [], 
@@ -18,7 +19,7 @@ def load_data():
         "topic_input": "비트코인 실시간 시황 요약해줘",
         "char_range": [50, 150],
         "post_style": "머니독 스타일(사투리)",
-        "target_days": ["월", "수", "금", "토", "일"],
+        "target_days": ["월", "화", "수", "목", "금", "토", "일"],
         "start_t": "09:00:00",
         "end_t": "22:00:00",
         "auto_gen_mode": False
@@ -84,7 +85,6 @@ st.markdown("""
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .spinning { display: inline-block; animation: spin 2s linear infinite; color: #00BFFF; font-size: 24px; }
     .status-card { padding: 15px; border-radius: 12px; border: 1px solid #333; background-color: #0e1117; text-align: center; }
-    .copy-label { font-size: 0.8rem; color: #00BFFF; font-weight: bold; margin-bottom: -10px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -158,17 +158,46 @@ with t2:
             with st.container(border=True):
                 st.caption(f"🕒 {item['time']} | ID: {real_idx+1}")
                 
-                # 1. 수정 가능한 텍스트 영역
-                edited_content = st.text_area("내용 수정", item['content'], key=f"edit_{real_idx}", height=100)
+                # 1. 내용 수정 박스
+                edited_content = st.text_area("내용 수정", item['content'], key=f"edit_{real_idx}", height=120)
                 st.session_state.queue[real_idx]['content'] = edited_content
                 
-                # 2. 복사 버튼 전용 구역 (st.code 활용)
-                st.markdown('<p class="copy-label">👇 아래 박스 우측 상단의 아이콘을 눌러 복사하이소!</p>', unsafe_allow_html=True)
-                st.code(edited_content, language=None)
+                # 2. 통합 복사 버튼 (HTML/JS)
+                # 버튼을 누르면 위 박스의 내용(edited_content)을 클립보드에 복사합니더.
+                components.html(f"""
+                    <button id="copyBtn_{real_idx}" style="
+                        background-color: #00BFFF;
+                        color: #0e1117;
+                        border: none;
+                        padding: 10px 20px;
+                        border-radius: 8px;
+                        cursor: pointer;
+                        font-weight: bold;
+                        font-size: 14px;
+                        width: 100%;
+                        transition: 0.3s;
+                    ">📋 이 글 바로 복사하기</button>
+                    <script>
+                        document.getElementById('copyBtn_{real_idx}').onclick = function() {{
+                            const text = {json.dumps(edited_content)};
+                            navigator.clipboard.writeText(text).then(function() {{
+                                const btn = document.getElementById('copyBtn_{real_idx}');
+                                btn.innerText = '✅ 복사 완료!';
+                                btn.style.backgroundColor = '#28a745';
+                                btn.style.color = 'white';
+                                setTimeout(() => {{
+                                    btn.innerText = '📋 이 글 바로 복사하기';
+                                    btn.style.backgroundColor = '#00BFFF';
+                                    btn.style.color = '#0e1117';
+                                }}, 2000);
+                            }});
+                        }}
+                    </script>
+                """, height=55)
                 
                 if st.button("🗑️ 이 글 삭제", key=f"del_{real_idx}"):
                     st.session_state.queue.pop(real_idx)
                     save_data(); st.rerun()
 
 st.divider()
-st.caption(f"© 2026 MoneyDock | 이제 복사 버튼으로 폰에 바로 붙여넣으이소!")
+st.caption(f"© 2026 MoneyDock | 이제 원터치로 폰에 붙여넣으이소!")
