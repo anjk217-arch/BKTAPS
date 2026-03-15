@@ -10,7 +10,7 @@ from streamlit_autorefresh import st_autorefresh
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
-# [#] 데이터 불러오기/저장 로직 (생략 없음)
+# [#] 데이터 불러오기/저장 로직
 def load_data():
     defaults = {
         "queue": [], 
@@ -54,7 +54,7 @@ def save_data():
     with open(SAVE_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# API 및 세션 설정
+# API 설정 및 초기화
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 genai.configure(api_key=GEMINI_API_KEY)
 saved = load_data()
@@ -62,7 +62,6 @@ for key, value in saved.items():
     if key not in st.session_state: st.session_state[key] = value
 if "success_msg" not in st.session_state: st.session_state.success_msg = None
 
-# 시간 포맷 복구
 if isinstance(st.session_state.start_t, str):
     try: st.session_state.start_t = datetime.time.fromisoformat(st.session_state.start_t)
     except: st.session_state.start_t = datetime.time(9,0)
@@ -87,61 +86,39 @@ def generate_draft(topic, min_len, max_len, style, model_name):
         if "429" in str(e): return "⚠️ [한도 초과] 내일 다시 시도해 주세요."
         return f"AI 오류: {e}"
 
-# --- UI 구성 (이 부분이 핵심입니다) ---
+# --- UI 구성 ---
 st.set_page_config(page_title="AI Post Assistant", layout="wide")
 
-# [설정] 카카오톡 상담 링크 입력
-KAKAO_LINK = "https://open.kakao.com/o/YOUR_LINK_HERE" # 실제 링크로 교체하세요!
+# 카카오톡 상담 링크
+KAKAO_LINK = "https://open.kakao.com/o/YOUR_LINK_HERE" 
 
 st.markdown(f"""
     <style>
-    /* 기본 애니메이션 및 카드 스타일 */
     @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
     .spinning {{ display: inline-block; animation: spin 2s linear infinite; color: #00BFFF; font-size: 24px; }}
     .status-card {{ padding: 15px; border-radius: 12px; border: 1px solid #333; background-color: #0e1117; text-align: center; }}
     .vertical-line {{ border-left: 1px solid #444; height: 290px; margin: 40px auto 0 auto; width: 1px; }}
-
-    /* 카카오톡 플로팅 버튼 스타일 */
+    
     .kakao-floating-btn {{
-        position: fixed;
-        bottom: 80px;
-        right: 40px;
-        width: 60px;
-        height: 60px;
-        background-color: #FEE500;
-        border-radius: 50%;
-        box-shadow: 2px 5px 15px rgba(0,0,0,0.3);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 9999;
-        cursor: pointer;
-        transition: transform 0.3s;
-        text-decoration: none;
+        position: fixed; bottom: 80px; right: 40px; width: 60px; height: 60px;
+        background-color: #FEE500; border-radius: 50%; box-shadow: 4px 10px 20px rgba(0,0,0,0.3);
+        display: flex; justify-content: center; align-items: center; z-index: 9999;
+        cursor: pointer; transition: all 0.3s ease; text-decoration: none;
     }}
-    .kakao-floating-btn:hover {{ transform: scale(1.1); background-color: #FADA0A; }}
+    .kakao-floating-btn:hover {{ transform: scale(1.1) translateY(-5px); background-color: #FADA0A; }}
     .kakao-icon {{ width: 35px; height: 35px; }}
     .kakao-tooltip {{
-        position: fixed;
-        bottom: 45px;
-        right: 100px;
-        background-color: #333;
-        color: white;
-        padding: 5px 12px;
-        border-radius: 20px;
-        font-size: 13px;
-        z-index: 9998;
-        opacity: 0;
-        transition: opacity 0.3s;
-        pointer-events: none;
+        position: fixed; bottom: 95px; right: 110px; background-color: #333; color: white;
+        padding: 8px 15px; border-radius: 20px; font-size: 14px; z-index: 9998;
+        opacity: 0; transition: opacity 0.3s; pointer-events: none;
     }}
     .kakao-floating-btn:hover + .kakao-tooltip {{ opacity: 1; }}
     </style>
 
-    <a href="https://open.kakao.com/o/s2lFw8Nf" target="_blank" class="kakao-floating-btn">
+    <a href="{KAKAO_LINK}" target="_blank" class="kakao-floating-btn">
         <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" class="kakao-icon">
     </a>
-    <div class="kakao-tooltip">문의 사항은 클릭해 주세요!</div>
+    <div class="kakao-tooltip">도움이 필요하신가요?</div>
     """, unsafe_allow_html=True)
 
 st.title("🤖 AI 콘텐츠 생성 비서")
@@ -155,16 +132,11 @@ if st.session_state.success_msg:
 
 st_autorefresh(interval=60000, key="auto_worker")
 available_models = get_available_models()
-
-# 이후 모든 로직(Sidebar, Tabs 등)은 기존과 동일하게 유지...
-# (전체 코드가 너무 길어 생략하지만, 기존의 sidebar, t1, t2 로직을 그대로 붙여넣으시면 됩니다)
-
 unused_count = len([item for item in st.session_state.queue if not item.get("used", False)])
 
 with st.sidebar:
     st.header("⚙️ 엔진 컨트롤")
     st.toggle("✍️ AI 자동 생성 ON", key="auto_gen_mode", on_change=save_data)
-    
     if st.session_state.auto_gen_mode:
         st.markdown(f"""<div class="status-card"><span class="spinning">🔄</span><br><b style="color:#00BFFF;">생성 엔진 가동 중</b><br><small>대기 중 콘텐츠: {unused_count}개</small></div>""", unsafe_allow_html=True)
     else:
@@ -178,23 +150,18 @@ with st.sidebar:
 t1, t2 = st.tabs(["✨ 글 생성 및 설정", "📋 콘텐츠 보관함"])
 
 with t1:
-    # [변경] 프롬프트 작성 섹션 (아래 가로줄 제거)
     st.subheader("📝 프롬프트 작성")
     st.session_state.topic_input = st.text_area("작성할 주제나 상황(프롬프트)을 입력하세요", value=st.session_state.topic_input, height=150)
     
-    # [제거] st.divider() - 요청하신 대로 가로줄을 삭제했습니다.
-
-    # 세부설정 및 스케줄설정 섹션
     col_left, col_mid, col_right = st.columns([1, 0.1, 1])
-    
     with col_left:
         st.markdown("### ⚙️ 세부설정")
         st.session_state.char_range = st.slider("글자 수 범위", 10, 300, value=tuple(st.session_state.char_range))
         styles = ["친절한 이웃", "딱딱한 비서", "친한 친구"]
         st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
         st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
-    
-    
+    with col_mid:
+        st.markdown('<div class="vertical-line"></div>', unsafe_allow_html=True)
     with col_right:
         st.markdown("### 📅 스케줄설정")
         st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
@@ -205,7 +172,6 @@ with t1:
         st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
 
     st.markdown("<br>", unsafe_allow_html=True)
-    
     if st.button("💾 현재 설정값 저장하기", use_container_width=True):
         save_data()
         st.success("설정 데이터가 안전하게 저장되었습니다.")
@@ -218,41 +184,34 @@ with t1:
                 save_data()
                 st.session_state.success_msg = "✅ AI 초안 작성이 완료되었습니다! 보관함 탭을 확인해 보세요."
                 st.rerun()
-        else:
-            st.warning("주제를 입력해 주세요.")
-
-    # 자동화 엔진 로직 유지
-    now = datetime.datetime.now()
-    if ["월","화","수","목","금","토","일"][now.weekday()] in st.session_state.target_days and st.session_state.start_t <= now.time() <= st.session_state.end_t:
-        if st.session_state.auto_gen_mode:
-            lg = st.session_state.last_gen_time
-            if lg is None or (now - datetime.datetime.fromisoformat(lg)).total_seconds() >= st.session_state.gen_interval_min * 60:
-                new_txt = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model)
-                st.session_state.queue.append({"time": now.strftime("%m-%d %H:%M"), "content": new_txt, "used": False})
-                st.session_state.last_gen_time = now.isoformat(); save_data()
-                st.session_state.success_msg = "✍️ 새로운 자동 생성 초안이 보관함에 추가되었습니다!"
-                st.rerun()
 
 with t2:
     unused_items_list = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
     used_items_list = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
-    
     st.subheader("📋 콘텐츠 보관함")
     sub_tabs = st.tabs([f"전체 ({len(st.session_state.queue)})", f"사용전 ({len(unused_items_list)})", f"사용후 ({len(used_items_list)})"])
     
     def render_queue_item(idx, item, tab_id):
         with st.container(border=True):
-            col_status, col_time = st.columns([1, 4])
+            char_count = len(item['content']) # [추가] 글자 수 계산
+            
+            col_status, col_time, col_char = st.columns([1, 2.5, 1.5])
             with col_status:
                 is_checked = st.checkbox("사용 완료", value=item["used"], key=f"check_{tab_id}_{idx}")
                 if is_checked != item["used"]:
                     st.session_state.queue[idx]["used"] = is_checked
-                    save_data()
-                    st.rerun()
+                    save_data(); st.rerun()
             with col_time:
                 st.caption(f"🕒 {item['time']} | ID: {idx+1}")
+            with col_char:
+                # [추가] 우측 상단에 실시간 글자 수 표시
+                st.markdown(f"<p style='text-align:right; color:#00BFFF; font-size:13px; font-weight:bold;'>글자 수: {char_count}자</p>", unsafe_allow_html=True)
             
-            edited_content = st.text_area("콘텐츠 수정", item['content'], key=f"edit_{tab_id}_{idx}", height=100)
+            # [추가] 내용에 맞춰 높이 자동 계산 (최소 100px, 줄당 25px 추가)
+            num_lines = item['content'].count('\n') + 1
+            dynamic_height = max(100, min(600, num_lines * 25 + 20))
+            
+            edited_content = st.text_area("콘텐츠 수정", item['content'], key=f"edit_{tab_id}_{idx}", height=dynamic_height)
             if edited_content != item['content']:
                 st.session_state.queue[idx]['content'] = edited_content
                 save_data()
@@ -283,9 +242,7 @@ with t2:
                 """, height=45)
             with c2:
                 if st.button("🗑️ 삭제", key=f"del_{tab_id}_{idx}", use_container_width=True):
-                    st.session_state.queue.pop(idx)
-                    save_data()
-                    st.rerun()
+                    st.session_state.queue.pop(idx); save_data(); st.rerun()
 
     with sub_tabs[0]: # 전체
         if not st.session_state.queue: st.info("보관된 콘텐츠가 없습니다.")
@@ -305,4 +262,4 @@ with t2:
                 render_queue_item(real_idx, item, "used")
 
 st.divider()
-st.caption("© 2026 AI Post Assistant")
+st.caption("© 2026 AI Post Assistant | 글자 수 표시 및 자동 높이 조절 기능이 적용되었습니다.")
