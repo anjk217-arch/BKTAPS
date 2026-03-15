@@ -10,7 +10,7 @@ from streamlit_autorefresh import st_autorefresh
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
-# [#] 데이터 불러오기/저장 로직
+# [#] 데이터 불러오기/저장 로직 (생략 없음)
 def load_data():
     defaults = {
         "queue": [], 
@@ -54,19 +54,15 @@ def save_data():
     with open(SAVE_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# API 설정
+# API 및 세션 설정
 GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
 genai.configure(api_key=GEMINI_API_KEY)
-
-# 세션 초기화
 saved = load_data()
 for key, value in saved.items():
     if key not in st.session_state: st.session_state[key] = value
+if "success_msg" not in st.session_state: st.session_state.success_msg = None
 
-# 성공 메시지 플래그 초기화
-if "success_msg" not in st.session_state:
-    st.session_state.success_msg = None
-
+# 시간 포맷 복구
 if isinstance(st.session_state.start_t, str):
     try: st.session_state.start_t = datetime.time.fromisoformat(st.session_state.start_t)
     except: st.session_state.start_t = datetime.time(9,0)
@@ -91,20 +87,64 @@ def generate_draft(topic, min_len, max_len, style, model_name):
         if "429" in str(e): return "⚠️ [한도 초과] 내일 다시 시도해 주세요."
         return f"AI 오류: {e}"
 
-# --- UI 구성 ---
+# --- UI 구성 (이 부분이 핵심입니다) ---
 st.set_page_config(page_title="AI Post Assistant", layout="wide")
 
-st.markdown("""
+# [설정] 카카오톡 상담 링크 입력
+KAKAO_LINK = "https://open.kakao.com/o/YOUR_LINK_HERE" # 실제 링크로 교체하세요!
+
+st.markdown(f"""
     <style>
-    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    .spinning { display: inline-block; animation: spin 2s linear infinite; color: #00BFFF; font-size: 24px; }
-    .status-card { padding: 15px; border-radius: 12px; border: 1px solid #333; background-color: #0e1117; text-align: center; }
-    .vertical-line { border-left: 1px solid #444; height: 290px; margin: 40px auto 0 auto; width: 1px; }
+    /* 기본 애니메이션 및 카드 스타일 */
+    @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
+    .spinning {{ display: inline-block; animation: spin 2s linear infinite; color: #00BFFF; font-size: 24px; }}
+    .status-card {{ padding: 15px; border-radius: 12px; border: 1px solid #333; background-color: #0e1117; text-align: center; }}
+    .vertical-line {{ border-left: 1px solid #444; height: 290px; margin: 40px auto 0 auto; width: 1px; }}
+
+    /* 카카오톡 플로팅 버튼 스타일 */
+    .kakao-floating-btn {{
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        width: 60px;
+        height: 60px;
+        background-color: #FEE500;
+        border-radius: 50%;
+        box-shadow: 2px 5px 15px rgba(0,0,0,0.3);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        cursor: pointer;
+        transition: transform 0.3s;
+        text-decoration: none;
+    }}
+    .kakao-floating-btn:hover {{ transform: scale(1.1); background-color: #FADA0A; }}
+    .kakao-icon {{ width: 35px; height: 35px; }}
+    .kakao-tooltip {{
+        position: fixed;
+        bottom: 45px;
+        right: 100px;
+        background-color: #333;
+        color: white;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 13px;
+        z-index: 9998;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+    }}
+    .kakao-floating-btn:hover + .kakao-tooltip {{ opacity: 1; }}
     </style>
+
+    <a href="{KAKAO_LINK}" target="_blank" class="kakao-floating-btn">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" class="kakao-icon">
+    </a>
+    <div class="kakao-tooltip">문의 사항은 클릭해 주세요!</div>
     """, unsafe_allow_html=True)
 
 st.title("🤖 AI 콘텐츠 생성 비서")
-
 st.markdown("##### :red[**gemini-2.5-flash 한도 초과로 429 error 발생 시 아래 모델들 중에서 골라서 이용할 것**]")
 st.markdown("""<small>gemini-3-flash-preview<br>gemini-2.5-flash-lite<br>gemini-3.1-flash-lite</small>""", unsafe_allow_html=True)
 st.divider()
@@ -115,6 +155,9 @@ if st.session_state.success_msg:
 
 st_autorefresh(interval=60000, key="auto_worker")
 available_models = get_available_models()
+
+# 이후 모든 로직(Sidebar, Tabs 등)은 기존과 동일하게 유지...
+# (전체 코드가 너무 길어 생략하지만, 기존의 sidebar, t1, t2 로직을 그대로 붙여넣으시면 됩니다)
 
 unused_count = len([item for item in st.session_state.queue if not item.get("used", False)])
 
