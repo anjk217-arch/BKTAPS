@@ -118,7 +118,9 @@ st.markdown(f"""
 
 st.title("🤖 AI 콘텐츠 생성 비서")
 st.markdown("##### :red[**gemini-2.5-flash 한도 초과 시 아래 모델들 중에서 골라서 이용할 것**]")
-st.markdown("<small>gemini-3-flash-preview / gemini-2.5-flash-lite / gemini-3.1-flash-lite</small>", unsafe_allow_html=True)
+st.markdown("<small>gemini-3-flash-preview<br>
+gemini-2.5-flash-lite<br>
+gemini-3.1-flash-lite</small>", unsafe_allow_html=True)
 st.divider()
 
 if st.session_state.success_msg:
