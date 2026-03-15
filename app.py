@@ -4,12 +4,13 @@ import google.generativeai as genai
 import datetime
 import json
 import os
+import time
 from streamlit_autorefresh import st_autorefresh
 
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
-# [#] 데이터 불러오기/저장 로직 (기존 유지)
+# [#] 데이터 불러오기/저장 로직
 def load_data():
     defaults = {
         "queue": [], 
@@ -30,6 +31,7 @@ def load_data():
                 saved_data = json.load(f)
                 for key, val in defaults.items():
                     if key not in saved_data: saved_data[key] = val
+                # 하위 호환성: 기존 데이터에 'used' 키가 없는 경우 추가
                 for item in saved_data["queue"]:
                     if "used" not in item: item["used"] = False
                 return saved_data
@@ -105,10 +107,13 @@ st.divider()
 st_autorefresh(interval=60000, key="auto_worker")
 available_models = get_available_models()
 
+# [수정] 대기 중인(사용 전) 콘텐츠 카운트 로직 강화
+unused_count = len([item for item in st.session_state.queue if not item.get("used", False)])
+
 with st.sidebar:
     st.header("⚙️ 엔진 컨트롤")
     st.toggle("✍️ AI 자동 생성 ON", key="auto_gen_mode", on_change=save_data)
-    unused_count = len([item for item in st.session_state.queue if not item.get("used", False)])
+    
     if st.session_state.auto_gen_mode:
         st.markdown(f"""<div class="status-card"><span class="spinning">🔄</span><br><b style="color:#00BFFF;">생성 엔진 가동 중</b><br><small>대기 중 콘텐츠: {unused_count}개</small></div>""", unsafe_allow_html=True)
     else:
@@ -147,16 +152,16 @@ with t1:
     st.subheader("📝 프롬프트 작성")
     st.session_state.topic_input = st.text_area("작성할 주제나 상황 입력", value=st.session_state.topic_input, height=150)
     
-    # [수정] 즉시 생성 시 성공 메시지 복구
     if st.button("✨ 즉시 AI 초안 생성", use_container_width=True, type="primary"):
         if st.session_state.topic_input:
             with st.spinner("AI가 초안을 작성하고 있습니다..."):
                 res_text = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
                 st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res_text, "used": False})
                 save_data()
-                # st.success를 호출하고 st.rerun을 제거하여 메시지가 보이게 함
-                # 대신 데이터는 이미 session_state에 들어갔으므로 다음 조작 시 반영됨
-                st.success("✅ 초안 작성이 완료되었습니다! 보관함 탭에서 확인하세요.")
+                # [수정] st.toast 사용 후 rerun하여 사이드바 카운트 즉시 업데이트
+                st.toast("✅ 초안 작성이 완료되어 보관함에 추가되었습니다!")
+                time.sleep(0.5)
+                st.rerun()
         else:
             st.warning("주제를 입력해 주세요.")
 
@@ -169,11 +174,16 @@ with t1:
                 new_txt = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model)
                 st.session_state.queue.append({"time": now.strftime("%m-%d %H:%M"), "content": new_txt, "used": False})
                 st.session_state.last_gen_time = now.isoformat(); save_data()
-                st.toast("✍️ 새로운 자동 생성 초안이 보관함에 추가되었습니다!")
+                st.toast("✍️ 새로운 자동 생성 초안이 추가되었습니다!")
+                st.rerun()
 
 with t2:
     st.subheader("📋 콘텐츠 보관함")
-    sub_tabs = st.tabs(["전체", "사용전", "사용후"])
+    # [추가] 각 탭 이름 옆에 현재 개수를 표시하여 직관성 높임
+    unused_items_list = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
+    used_items_list = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
+    
+    sub_tabs = st.tabs([f"전체 ({len(st.session_state.queue)})", f"사용전 ({len(unused_items_list)})", f"사용후 ({len(used_items_list)})"])
     
     def render_queue_item(idx, item, tab_id):
         with st.container(border=True):
@@ -222,7 +232,6 @@ with t2:
                     save_data()
                     st.rerun()
 
-    # 탭별 렌더링 로직 (유지)
     with sub_tabs[0]: # 전체
         if not st.session_state.queue: st.info("보관된 콘텐츠가 없습니다.")
         else:
@@ -230,16 +239,14 @@ with t2:
                 real_idx = len(st.session_state.queue) - 1 - idx
                 render_queue_item(real_idx, item, "all")
     with sub_tabs[1]: # 사용전
-        unused_items = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
-        if not unused_items: st.info("사용 전인 콘텐츠가 없습니다.")
+        if not unused_items_list: st.info("사용 전인 콘텐츠가 없습니다.")
         else:
-            for real_idx, item in reversed(unused_items):
+            for real_idx, item in reversed(unused_items_list):
                 render_queue_item(real_idx, item, "unused")
     with sub_tabs[2]: # 사용후
-        used_items = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
-        if not used_items: st.info("사용 완료된 콘텐츠가 없습니다.")
+        if not used_items_list: st.info("사용 완료된 콘텐츠가 없습니다.")
         else:
-            for real_idx, item in reversed(used_items):
+            for real_idx, item in reversed(used_items_list):
                 render_queue_item(real_idx, item, "used")
 
 st.divider()
