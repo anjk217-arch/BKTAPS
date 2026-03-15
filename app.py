@@ -138,7 +138,7 @@ st.markdown(f"""
     .kakao-floating-btn:hover + .kakao-tooltip {{ opacity: 1; }}
     </style>
 
-    <a href="{KAKAO_LINK}" target="_blank" class="kakao-floating-btn">
+    <a href="https://open.kakao.com/o/s2lFw8Nf" target="_blank" class="kakao-floating-btn">
         <img src="https://upload.wikimedia.org/wikipedia/commons/e/e3/KakaoTalk_logo.svg" class="kakao-icon">
     </a>
     <div class="kakao-tooltip">문의 사항은 클릭해 주세요!</div>
