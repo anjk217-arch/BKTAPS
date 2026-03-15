@@ -266,4 +266,4 @@ with t2:
         for r_idx, item in reversed(used_list): render_queue_item(r_idx, item, "ud")
 
 st.divider()
-st.caption("© 2026 AI Post Assistant")
+st.caption("© 2026 BK. 인공지능이 쓰고 BK가 직접 검수한 명품 비서")
