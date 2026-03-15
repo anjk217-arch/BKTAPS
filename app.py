@@ -95,6 +95,13 @@ st.markdown("""
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
     .spinning { display: inline-block; animation: spin 2s linear infinite; color: #00BFFF; font-size: 24px; }
     .status-card { padding: 15px; border-radius: 12px; border: 1px solid #333; background-color: #0e1117; text-align: center; }
+    /* 세로 구분선 스타일 */
+    .vertical-line {
+        border-left: 1px solid #444;
+        height: 380px;
+        margin: 0 auto;
+        width: 1px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -125,30 +132,37 @@ with st.sidebar:
 t1, t2 = st.tabs(["✨ 글 생성 및 설정", "📋 콘텐츠 보관함"])
 
 with t1:
-    # [섹션 1] 세부 스케줄 및 스타일 설정
-    st.subheader("⚙️ 세부 스케줄 및 스타일 설정")
-    col1, col2 = st.columns(2)
-    with col1:
+    # [섹션 1] 설정 (제목 변경)
+    st.subheader("⚙️ 설정")
+    
+    # 좌측열, 구분선열, 우측열 구분
+    col_left, col_mid, col_right = st.columns([1, 0.1, 1])
+    
+    with col_left:
+        st.markdown("#### 세부설정") # 소제목 추가
         st.session_state.char_range = st.slider("글자 수 범위", 10, 300, value=tuple(st.session_state.char_range))
         
         styles = ["친절한 이웃", "딱딱한 비서", "친한 친구"]
         st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
         
-        # AI 모델 선택 (좌측 하단 유지)
         st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
+    
+    with col_mid:
+        # 세로 구분선 삽입
+        st.markdown('<div class="vertical-line"></div>', unsafe_allow_html=True)
         
-    with col2:
+    with col_right:
+        st.markdown("#### 스케줄설정") # 소제목 추가
         st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
         
-        # 시작/종료 시각
-        cs, ce = st.columns(2)
-        st.session_state.start_t = cs.time_input("가동 시작 시각", value=st.session_state.start_t)
-        st.session_state.end_t = ce.time_input("가동 종료 시각", value=st.session_state.end_t)
+        time_col1, time_col2 = st.columns(2)
+        st.session_state.start_t = time_col1.time_input("가동 시작 시각", value=st.session_state.start_t)
+        st.session_state.end_t = time_col2.time_input("가동 종료 시각", value=st.session_state.end_t)
 
-        # [이동 및 크기 조정] 자동 생성 간격을 가동 시각 아래에 풀 사이즈로 배치
         minute_options = [i for i in range(10, 610, 10)] 
         st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
 
+    st.markdown("<br>", unsafe_allow_html=True) # 여백 추가
     if st.button("💾 현재 설정값 저장하기", use_container_width=True):
         save_data()
         st.success("설정 데이터가 안전하게 저장되었습니다.")
@@ -167,7 +181,7 @@ with t1:
                 st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res_text, "used": False})
                 save_data(); st.success("초안이 보관함에 추가되었습니다.")
 
-    # --- [자동 생성 엔진] ---
+    # --- [자동 생성 엔진 로직 유지] ---
     now = datetime.datetime.now()
     if ["월","화","수","목","금","토","일"][now.weekday()] in st.session_state.target_days and st.session_state.start_t <= now.time() <= st.session_state.end_t:
         if st.session_state.auto_gen_mode:
@@ -228,20 +242,18 @@ with t2:
                     st.session_state.queue.pop(idx)
                     save_data(); st.rerun()
 
-    # 전체/사용전/사용후 탭 렌더링 (생략 없이 유지)
+    # 탭별 렌더링 로직 (유지)
     with sub_tabs[0]:
         if not st.session_state.queue: st.info("보관된 콘텐츠가 없습니다.")
         else:
             for idx, item in enumerate(reversed(st.session_state.queue)):
                 real_idx = len(st.session_state.queue) - 1 - idx
                 render_queue_item(real_idx, item)
-
     with sub_tabs[1]:
         unused_items = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
         if not unused_items: st.info("사용 전인 콘텐츠가 없습니다.")
         else:
             for real_idx, item in reversed(unused_items): render_queue_item(real_idx, item)
-
     with sub_tabs[2]:
         used_items = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
         if not used_items: st.info("사용 완료된 콘텐츠가 없습니다.")
@@ -249,4 +261,4 @@ with t2:
             for real_idx, item in reversed(used_items): render_queue_item(real_idx, item)
 
 st.divider()
-st.caption(f"© 2026 AI Post Assistant | 요청하신 대로 자동 생성 간격의 위치와 크기가 조정되었습니다.")
+st.caption(f"© 2026 AI Post Assistant | 레이아웃이 설정별로 구분되어 가독성이 개선되었습니다.")
