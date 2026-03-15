@@ -76,10 +76,21 @@ def get_available_models():
         return models if models else ["models/gemini-1.5-flash"]
     except: return ["models/gemini-1.5-flash"]
 
+# [강화] 글자 수 준수를 위한 프롬프트 엔지니어링 적용
 def generate_draft(topic, min_len, max_len, style, model_name):
     try:
         model = genai.GenerativeModel(model_name)
-        prompt = f"주제: {topic}\n분량: {min_len}~{max_len}자 엄수\n말투: {style}\n스레드 게시글로 작성해줘."
+        prompt = f"""
+        주제: {topic}
+        말투: {style}
+        
+        [글자 수 절대 준수 사항]
+        - 공백을 포함하여 반드시 {min_len}자 이상, {max_len}자 이하로 작성할 것.
+        - 이 범위를 벗어나면 안 됨.
+        - 부연 설명 없이 '내용만' 출력할 것.
+        
+        형식: 쓰레드 게시글
+        """
         response = model.generate_content(prompt)
         return response.text
     except Exception as e:
@@ -88,8 +99,6 @@ def generate_draft(topic, min_len, max_len, style, model_name):
 
 # --- UI 구성 ---
 st.set_page_config(page_title="AI Post Assistant", layout="wide")
-
-# 카카오톡 상담 링크
 KAKAO_LINK = "https://open.kakao.com/o/YOUR_LINK_HERE" 
 
 st.markdown(f"""
@@ -144,8 +153,7 @@ with st.sidebar:
     st.divider()
     if st.button("보관함 전체 비우기"): 
         st.session_state.queue = []
-        save_data()
-        st.rerun()
+        save_data(); st.rerun()
 
 t1, t2 = st.tabs(["✨ 글 생성 및 설정", "📋 콘텐츠 보관함"])
 
@@ -173,8 +181,7 @@ with t1:
 
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("💾 현재 설정값 저장하기", use_container_width=True):
-        save_data()
-        st.success("설정 데이터가 안전하게 저장되었습니다.")
+        save_data(); st.success("설정 데이터가 안전하게 저장되었습니다.")
 
     if st.button("✨ 즉시 AI 초안 생성", use_container_width=True, type="primary"):
         if st.session_state.topic_input:
@@ -193,7 +200,8 @@ with t2:
     
     def render_queue_item(idx, item, tab_id):
         with st.container(border=True):
-            char_count = len(item['content']) # [추가] 글자 수 계산
+            content_text = item['content']
+            char_count = len(content_text)
             
             col_status, col_time, col_char = st.columns([1, 2.5, 1.5])
             with col_status:
@@ -204,15 +212,14 @@ with t2:
             with col_time:
                 st.caption(f"🕒 {item['time']} | ID: {idx+1}")
             with col_char:
-                # [추가] 우측 상단에 실시간 글자 수 표시
                 st.markdown(f"<p style='text-align:right; color:#00BFFF; font-size:13px; font-weight:bold;'>글자 수: {char_count}자</p>", unsafe_allow_html=True)
             
-            # [추가] 내용에 맞춰 높이 자동 계산 (최소 100px, 줄당 25px 추가)
-            num_lines = item['content'].count('\n') + 1
-            dynamic_height = max(100, min(600, num_lines * 25 + 20))
+            # [개선] 스크롤 방지: 줄 바꿈과 자동 줄바꿈(45자 기준)을 모두 계산하여 높이 산출
+            num_lines = content_text.count('\n') + (len(content_text) // 45) + 1
+            dynamic_height = max(120, num_lines * 28 + 20) # 넉넉한 줄 간격 확보
             
-            edited_content = st.text_area("콘텐츠 수정", item['content'], key=f"edit_{tab_id}_{idx}", height=dynamic_height)
-            if edited_content != item['content']:
+            edited_content = st.text_area("콘텐츠 수정", content_text, key=f"edit_{tab_id}_{idx}", height=dynamic_height)
+            if edited_content != content_text:
                 st.session_state.queue[idx]['content'] = edited_content
                 save_data()
             
@@ -244,22 +251,21 @@ with t2:
                 if st.button("🗑️ 삭제", key=f"del_{tab_id}_{idx}", use_container_width=True):
                     st.session_state.queue.pop(idx); save_data(); st.rerun()
 
-    with sub_tabs[0]: # 전체
+    # 탭별 렌더링 유지
+    with sub_tabs[0]:
         if not st.session_state.queue: st.info("보관된 콘텐츠가 없습니다.")
         else:
             for idx, item in enumerate(reversed(st.session_state.queue)):
                 real_idx = len(st.session_state.queue) - 1 - idx
                 render_queue_item(real_idx, item, "all")
-    with sub_tabs[1]: # 사용전
+    with sub_tabs[1]:
         if not unused_items_list: st.info("사용 전인 콘텐츠가 없습니다.")
         else:
-            for real_idx, item in reversed(unused_items_list):
-                render_queue_item(real_idx, item, "unused")
-    with sub_tabs[2]: # 사용후
+            for real_idx, item in reversed(unused_items_list): render_queue_item(real_idx, item, "unused")
+    with sub_tabs[2]:
         if not used_items_list: st.info("사용 완료된 콘텐츠가 없습니다.")
         else:
-            for real_idx, item in reversed(used_items_list):
-                render_queue_item(real_idx, item, "used")
+            for real_idx, item in reversed(used_items_list): render_queue_item(real_idx, item, "used")
 
 st.divider()
-st.caption("© 2026 AI Post Assistant | 글자 수 표시 및 자동 높이 조절 기능이 적용되었습니다.")
+st.caption("© 2026 AI Post Assistant")
