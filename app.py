@@ -96,7 +96,7 @@ def generate_draft(topic, min_len, max_len, style, model_name):
 st.set_page_config(page_title="AI Post Assistant", layout="wide")
 
 # 카카오톡 링크 및 CSS 스타일 (이전과 동일)
-KAKAO_LINK = "https://open.kakao.com/o/YOUR_LINK_HERE" 
+KAKAO_LINK = "https://open.kakao.com/o/s2lFw8Nf" 
 st.markdown(f"""
     <style>
     .spinning {{ display: inline-block; animation: spin 2s linear infinite; color: #00BFFF; font-size: 24px; }}
@@ -118,9 +118,9 @@ st.markdown(f"""
 
 st.title("🤖 AI 콘텐츠 생성 비서")
 st.markdown("##### :red[**gemini-2.5-flash 한도 초과 시 아래 모델들 중에서 골라서 이용할 것**]")
-st.markdown("<small>gemini-3-flash-preview<br>
-gemini-2.5-flash-lite<br>
-gemini-3.1-flash-lite</small>", unsafe_allow_html=True)
+st.markdown("""<small>gemini-3-flash-preview <br>
+gemini-2.5-flash-lite <br>
+gemini-3.1-flash-lite</small>""", unsafe_allow_html=True)
 st.divider()
 
 if st.session_state.success_msg:
