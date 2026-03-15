@@ -69,7 +69,7 @@ if isinstance(st.session_state.end_t, str):
     try: st.session_state.end_t = datetime.time.fromisoformat(st.session_state.end_t)
     except: st.session_state.end_t = datetime.time(22,0)
 
-# [복구] 원래 코드에 있던 모델 목록 동적 불러오기 함수
+# 모델 목록 동적 불러오기
 @st.cache_resource
 def get_available_models():
     try:
@@ -99,7 +99,6 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🤖 AI 콘텐츠 생성 비서")
-# [복구] 원래 코드에 있던 모델 관련 안내 문구
 st.markdown("##### :red[**gemini-2.5-flash 한도 초과로 429 error 발생 시 아래 모델들 중에서 골라서 이용할 것**]")
 st.markdown("""<small>gemini-3-flash-preview<br>gemini-2.5-flash-lite<br>gemini-3.1-flash-lite</small>""", unsafe_allow_html=True)
 st.divider()
@@ -130,18 +129,17 @@ with t1:
     st.subheader("⚙️ 세부 스케줄 및 스타일 설정")
     col1, col2 = st.columns(2)
     with col1:
+        # 모든 위젯을 개별 줄에 배치하여 너비를 통일했습니다.
         st.session_state.char_range = st.slider("글자 수 범위", 10, 300, value=tuple(st.session_state.char_range))
         
         styles = ["친절한 이웃", "딱딱한 비서", "친한 친구"]
         st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
         
-        # [수정] AI 모델 선택과 생성 간격을 한 줄에 나란히 배치
-        sub_col1, sub_col2 = st.columns(2)
-        with sub_col1:
-            st.session_state.selected_model = st.selectbox("AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
-        with sub_col2:
-            minute_options = [i for i in range(10, 610, 10)] 
-            st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
+        # [복구 및 크기 조정] AI 모델 선택과 간격 설정을 각각 한 줄씩 배치하여 가로 길이를 맞춤
+        st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
+        
+        minute_options = [i for i in range(10, 610, 10)] 
+        st.session_state.gen_interval_min = st.selectbox("자동 생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
         
     with col2:
         st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
@@ -164,11 +162,7 @@ with t1:
         else:
             with st.spinner("AI가 콘텐츠를 작성하고 있습니다..."):
                 res_text = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
-                st.session_state.queue.append({
-                    "time": datetime.datetime.now().strftime("%m-%d %H:%M"), 
-                    "content": res_text,
-                    "used": False
-                })
+                st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res_text, "used": False})
                 save_data(); st.success("초안이 보관함에 추가되었습니다.")
 
     # --- [자동 생성 엔진] ---
@@ -178,11 +172,7 @@ with t1:
             lg = st.session_state.last_gen_time
             if lg is None or (now - datetime.datetime.fromisoformat(lg)).total_seconds() >= st.session_state.gen_interval_min * 60:
                 new_txt = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model)
-                st.session_state.queue.append({
-                    "time": now.strftime("%m-%d %H:%M"), 
-                    "content": new_txt,
-                    "used": False
-                })
+                st.session_state.queue.append({"time": now.strftime("%m-%d %H:%M"), "content": new_txt, "used": False})
                 st.session_state.last_gen_time = now.isoformat(); save_data(); st.toast("✍️ 새로운 자동 생성 글이 도착했습니다.")
 
 with t2:
@@ -221,7 +211,6 @@ with t2:
                         }}
                     </script>
                 """, height=45)
-            
             with c2:
                 if not item["used"]:
                     if st.button("사용 완료", key=f"use_{idx}", use_container_width=True):
@@ -231,7 +220,6 @@ with t2:
                     if st.button("복구", key=f"unuse_{idx}", use_container_width=True):
                         st.session_state.queue[idx]["used"] = False
                         save_data(); st.rerun()
-            
             with c3:
                 if st.button("🗑️ 삭제", key=f"del_{idx}", use_container_width=True):
                     st.session_state.queue.pop(idx)
@@ -257,4 +245,4 @@ with t2:
             for real_idx, item in reversed(used_items): render_queue_item(real_idx, item)
 
 st.divider()
-st.caption(f"© 2026 AI Post Assistant | 모델 목록 복구 및 레이아웃 조정이 완료되었습니다.")
+st.caption(f"© 2026 AI Post Assistant | 모든 설정 항목의 크기와 정렬이 조정되었습니다.")
