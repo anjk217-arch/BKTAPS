@@ -194,9 +194,7 @@ with t1:
         st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
         st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", available_models, index=available_models.index(st.session_state.selected_model) if st.session_state.selected_model in available_models else 0)
     
-    with col_mid:
-        st.markdown('<div class="vertical-line"></div>', unsafe_allow_html=True)
-        
+    
     with col_right:
         st.markdown("### 📅 스케줄설정")
         st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
