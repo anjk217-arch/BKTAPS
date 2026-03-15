@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components  # [추가] 복사 기능을 위한 도구
+import streamlit.components.v1 as components
 import google.generativeai as genai
 import datetime
 import json
@@ -9,7 +9,7 @@ from streamlit_autorefresh import st_autorefresh
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
-# [#] 데이터 불러오기/저장 로직 (기존 동일)
+# [#] 데이터 불러오기/저장 로직
 def load_data():
     defaults = {
         "queue": [], 
@@ -104,17 +104,23 @@ with st.sidebar:
         st.markdown(f"""<div class="status-card"><b style="color:#888;">정지 상태</b><br><small>보관함: {pending_count}개</small></div>""", unsafe_allow_html=True)
 
     st.divider()
-    with st.popover("🕒 간격/요일 설정"):
-        minute_options = [i for i in range(10, 610, 10)] 
-        st.session_state.gen_interval_min = st.selectbox("생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
-        st.session_state.target_days = st.multiselect("가동 요일", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
-        if st.button("설정 저장", key="sidebar_save_btn"): save_data(); st.success("저장 완료!")
-    if st.button("보관함 싹 비우기", key="sidebar_clear_btn"): st.session_state.queue = []; save_data(); st.rerun()
+    # 사이드바에는 간격 설정만 남겼십니더
+    minute_options = [i for i in range(10, 610, 10)] 
+    st.session_state.gen_interval_min = st.selectbox("생성 간격(분)", options=minute_options, index=minute_options.index(st.session_state.gen_interval_min) if st.session_state.gen_interval_min in minute_options else 5)
+    
+    if st.button("보관함 싹 비우기", key="sidebar_clear_btn"): 
+        st.session_state.queue = []
+        save_data()
+        st.rerun()
 
-t1, t2 = st.tabs(["✨ 글 생성하기", "📋 내 보관함"])
+t1, t2 = st.tabs(["✨ 글 생성 및 설정", "📋 내 보관함"])
 
 with t1:
-    st.subheader("📝 새로운 글 만들기")
+    st.subheader("🤖 AI 모델 및 주제 설정")
+    # [복구] 모델 설정을 다시 위로 올렸십니더
+    models = ["models/gemini-1.5-flash", "models/gemini-1.5-pro"]
+    st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", models, index=models.index(st.session_state.selected_model) if st.session_state.selected_model in models else 0)
+    
     st.session_state.topic_input = st.text_area("주제나 상황을 입력하이소", value=st.session_state.topic_input, height=150)
     
     if st.button("✨ 지금 바로 초안 뽑기", use_container_width=True, type="primary"):
@@ -126,17 +132,24 @@ with t1:
                 save_data(); st.success("보관함에 저장됐십니더!")
 
     st.divider()
+    st.subheader("⚙️ 세부 스케줄 및 스타일 설정")
     col1, col2 = st.columns(2)
     with col1:
-        st.session_state.char_range = st.slider("글자 수", 10, 300, value=tuple(st.session_state.char_range))
+        st.session_state.char_range = st.slider("글자 수 설정", 10, 300, value=tuple(st.session_state.char_range))
         styles = ["머니독 스타일(사투리)", "전문적 시황 분석", "친절한 이웃", "스하리/반하리 유도형"]
-        st.session_state.post_style = st.selectbox("말투", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
+        st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(st.session_state.post_style) if st.session_state.post_style in styles else 0)
+        
     with col2:
-        models = ["models/gemini-1.5-flash", "models/gemini-1.5-pro"]
-        st.session_state.selected_model = st.selectbox("AI 모델", models, index=0)
+        # [복구] 요일 반복 설정을 다시 메인 화면으로 가져왔십니더
+        st.session_state.target_days = st.multiselect("가동 요일 선택", ["월", "화", "수", "목", "금", "토", "일"], default=st.session_state.target_days)
         cs, ce = st.columns(2)
-        st.session_state.start_t = cs.time_input("시작 시각", value=st.session_state.start_t)
-        st.session_state.end_t = ce.time_input("종료 시각", value=st.session_state.end_t)
+        st.session_state.start_t = cs.time_input("가동 시작", value=st.session_state.start_t)
+        st.session_state.end_t = ce.time_input("가동 종료", value=st.session_state.end_t)
+
+    # [복구] 설정 데이터 저장 버튼 부활!
+    if st.button("💾 현재 모든 설정값 저장하기", use_container_width=True):
+        save_data()
+        st.success("모든 설정이 안전하게 저장됐십니더! (JSON 파일 업데이트 완료)")
 
     # --- [자동 생성 엔진] ---
     now = datetime.datetime.now()
@@ -149,21 +162,19 @@ with t1:
                 st.session_state.last_gen_time = now.isoformat(); save_data(); st.toast("✍️ 새 글 생성 완료!")
 
 with t2:
-    st.subheader("📋 생성된 글 목록")
+    st.subheader("📋 생성된 글 목록 (복사해서 사용하이소)")
     if not st.session_state.queue:
-        st.info("아직 보관된 글이 없십니더.")
+        st.info("아직 보관된 글이 없십니더. 첫 번째 탭에서 글을 생성해보이소!")
     else:
         for idx, item in enumerate(reversed(st.session_state.queue)):
             real_idx = len(st.session_state.queue) - 1 - idx
             with st.container(border=True):
                 st.caption(f"🕒 {item['time']} | ID: {real_idx+1}")
                 
-                # 1. 내용 수정 박스
                 edited_content = st.text_area("내용 수정", item['content'], key=f"edit_{real_idx}", height=120)
                 st.session_state.queue[real_idx]['content'] = edited_content
                 
-                # 2. 통합 복사 버튼 (HTML/JS)
-                # 버튼을 누르면 위 박스의 내용(edited_content)을 클립보드에 복사합니더.
+                # 원터치 복사 버튼 (기능 유지)
                 components.html(f"""
                     <button id="copyBtn_{real_idx}" style="
                         background-color: #00BFFF;
@@ -200,4 +211,4 @@ with t2:
                     save_data(); st.rerun()
 
 st.divider()
-st.caption(f"© 2026 MoneyDock | 이제 원터치로 폰에 붙여넣으이소!")
+st.caption(f"© 2026 MoneyDock | 행님이 원하시는 대로 모든 설정을 복구했십니더!")
