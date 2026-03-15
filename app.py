@@ -12,13 +12,13 @@ SAVE_FILE = "moneydock_data.json"
 # [#] 데이터 불러오기/저장 로직
 def load_data():
     defaults = {
-        "queue": [], 
+        "queue": [], # 각 아이템은 {"time": str, "content": str, "used": bool} 구조
         "last_gen_time": None,
         "gen_interval_min": 60,
         "selected_model": "models/gemini-1.5-flash",
         "topic_input": "비트코인 실시간 시황 요약해줘",
         "char_range": [50, 150],
-        "post_style": "전문적 시황 분석",
+        "post_style": "친절한 이웃",
         "target_days": ["월", "화", "수", "목", "금", "토", "일"],
         "start_t": "09:00:00",
         "end_t": "22:00:00",
@@ -30,6 +30,9 @@ def load_data():
                 saved_data = json.load(f)
                 for key, val in defaults.items():
                     if key not in saved_data: saved_data[key] = val
+                # 하위 호환성: 기존 데이터에 'used' 키가 없는 경우 추가
+                for item in saved_data["queue"]:
+                    if "used" not in item: item["used"] = False
                 return saved_data
         except: return defaults
     return defaults
@@ -97,11 +100,12 @@ with st.sidebar:
     st.header("⚙️ 엔진 컨트롤")
     st.toggle("✍️ AI 자동 생성 ON", key="auto_gen_mode", on_change=save_data)
     
-    pending_count = len(st.session_state.queue)
+    # 미사용 게시글 수 계산
+    unused_count = len([item for item in st.session_state.queue if not item.get("used", False)])
     if st.session_state.auto_gen_mode:
-        st.markdown(f"""<div class="status-card"><span class="spinning">🔄</span><br><b style="color:#00BFFF;">생성 엔진 가동 중</b><br><small>보관함: {pending_count}개</small></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="status-card"><span class="spinning">🔄</span><br><b style="color:#00BFFF;">생성 엔진 가동 중</b><br><small>대기 중 콘텐츠: {unused_count}개</small></div>""", unsafe_allow_html=True)
     else:
-        st.markdown(f"""<div class="status-card"><b style="color:#888;">정지 상태</b><br><small>보관함: {pending_count}개</small></div>""", unsafe_allow_html=True)
+        st.markdown(f"""<div class="status-card"><b style="color:#888;">정지 상태</b><br><small>대기 중 콘텐츠: {unused_count}개</small></div>""", unsafe_allow_html=True)
 
     st.divider()
     minute_options = [i for i in range(10, 610, 10)] 
@@ -120,12 +124,13 @@ with t1:
     col1, col2 = st.columns(2)
     with col1:
         st.session_state.char_range = st.slider("글자 수 범위", 10, 300, value=tuple(st.session_state.char_range))
-        styles = ["전문적 시황 분석", "친절한 이웃"]
+        
+        # [수정] 말투 설정 옵션 변경
+        styles = ["친절한 이웃", "딱딱한 비서", "친한 친구"]
         current_style = st.session_state.get("post_style", styles[0])
         if current_style not in styles: current_style = styles[0]
         st.session_state.post_style = st.selectbox("말투 설정", styles, index=styles.index(current_style))
         
-        # [이동] AI 모델 선택 항목을 이 섹션으로 옮겼습니다.
         models = ["models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-1.5-flash-8b"]
         st.session_state.selected_model = st.selectbox("사용할 AI 모델 선택", models, index=models.index(st.session_state.selected_model) if st.session_state.selected_model in models else 0)
         
@@ -141,7 +146,7 @@ with t1:
 
     st.divider()
 
-    # [섹션 2] 프롬프트 작성 (제목 변경 및 모델 선택 삭제)
+    # [섹션 2] 프롬프트 작성
     st.subheader("📝 프롬프트 작성")
     st.session_state.topic_input = st.text_area("작성할 주제나 상황(프롬프트)을 입력하세요", value=st.session_state.topic_input, height=150)
     
@@ -150,7 +155,11 @@ with t1:
         else:
             with st.spinner("AI가 콘텐츠를 작성하고 있습니다..."):
                 res_text = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
-                st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res_text})
+                st.session_state.queue.append({
+                    "time": datetime.datetime.now().strftime("%m-%d %H:%M"), 
+                    "content": res_text,
+                    "used": False # 신규 글은 사용전 상태
+                })
                 save_data(); st.success("초안이 보관함에 추가되었습니다.")
 
     # --- [자동 생성 엔진] ---
@@ -160,57 +169,97 @@ with t1:
             lg = st.session_state.last_gen_time
             if lg is None or (now - datetime.datetime.fromisoformat(lg)).total_seconds() >= st.session_state.gen_interval_min * 60:
                 new_txt = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model)
-                st.session_state.queue.append({"time": now.strftime("%m-%d %H:%M"), "content": new_txt})
+                st.session_state.queue.append({
+                    "time": now.strftime("%m-%d %H:%M"), 
+                    "content": new_txt,
+                    "used": False
+                })
                 st.session_state.last_gen_time = now.isoformat(); save_data(); st.toast("✍️ 새로운 자동 생성 글이 도착했습니다.")
 
 with t2:
-    st.subheader("📋 생성된 콘텐츠 보관함")
-    if not st.session_state.queue:
-        st.info("보관된 글이 없습니다. 설정 탭에서 글을 생성해 보세요.")
-    else:
-        for idx, item in enumerate(reversed(st.session_state.queue)):
-            real_idx = len(st.session_state.queue) - 1 - idx
-            with st.container(border=True):
-                st.caption(f"🕒 생성 시각: {item['time']} | ID: {real_idx+1}")
-                
-                edited_content = st.text_area("콘텐츠 수정", item['content'], key=f"edit_{real_idx}", height=120)
-                st.session_state.queue[real_idx]['content'] = edited_content
-                
-                # 복사 버튼 구성 (JavaScript 활용)
+    st.subheader("📋 콘텐츠 보관함")
+    # [수정] 전체, 사용전, 사용후 탭 구분
+    sub_tabs = st.tabs(["전체", "사용전", "사용후"])
+    
+    def render_queue_item(idx, item):
+        with st.container(border=True):
+            status_label = "✅ 사용 완료" if item["used"] else "⏳ 사용 전"
+            st.caption(f"🕒 생성 시각: {item['time']} | 상태: {status_label}")
+            
+            edited_content = st.text_area("콘텐츠 수정", item['content'], key=f"edit_{idx}", height=100)
+            st.session_state.queue[idx]['content'] = edited_content
+            
+            # 복사 버튼 및 사용 완료 처리 UI
+            c1, c2, c3 = st.columns([2, 1, 1])
+            
+            with c1:
                 components.html(f"""
-                    <button id="copyBtn_{real_idx}" style="
-                        background-color: #00BFFF;
-                        color: #0e1117;
-                        border: none;
-                        padding: 10px 20px;
-                        border-radius: 8px;
-                        cursor: pointer;
-                        font-weight: bold;
-                        font-size: 14px;
-                        width: 100%;
-                        transition: 0.3s;
-                    ">📋 텍스트 복사하기</button>
+                    <button id="copyBtn_{idx}" style="
+                        background-color: #00BFFF; color: #0e1117; border: none; padding: 8px 15px;
+                        border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; width: 100%;
+                    ">📋 텍스트 복사</button>
                     <script>
-                        document.getElementById('copyBtn_{real_idx}').onclick = function() {{
+                        document.getElementById('copyBtn_{idx}').onclick = function() {{
                             const text = {json.dumps(edited_content)};
                             navigator.clipboard.writeText(text).then(function() {{
-                                const btn = document.getElementById('copyBtn_{real_idx}');
+                                const btn = document.getElementById('copyBtn_{idx}');
                                 btn.innerText = '✅ 복사 완료';
                                 btn.style.backgroundColor = '#28a745';
                                 btn.style.color = 'white';
                                 setTimeout(() => {{
-                                    btn.innerText = '📋 텍스트 복사하기';
+                                    btn.innerText = '📋 텍스트 복사';
                                     btn.style.backgroundColor = '#00BFFF';
                                     btn.style.color = '#0e1117';
                                 }}, 2000);
                             }});
                         }}
                     </script>
-                """, height=55)
-                
-                if st.button("🗑️ 삭제하기", key=f"del_{real_idx}"):
-                    st.session_state.queue.pop(real_idx)
-                    save_data(); st.rerun()
+                """, height=45)
+            
+            with c2:
+                if not item["used"]:
+                    if st.button("사용 완료 처리", key=f"use_{idx}", use_container_width=True):
+                        st.session_state.queue[idx]["used"] = True
+                        save_data()
+                        st.rerun()
+                else:
+                    if st.button("사용 전으로 복구", key=f"unuse_{idx}", use_container_width=True):
+                        st.session_state.queue[idx]["used"] = False
+                        save_data()
+                        st.rerun()
+            
+            with c3:
+                if st.button("🗑️ 삭제", key=f"del_{idx}", use_container_width=True):
+                    st.session_state.queue.pop(idx)
+                    save_data()
+                    st.rerun()
+
+    # 전체 탭
+    with sub_tabs[0]:
+        if not st.session_state.queue:
+            st.info("보관된 콘텐츠가 없습니다.")
+        else:
+            for idx, item in enumerate(reversed(st.session_state.queue)):
+                real_idx = len(st.session_state.queue) - 1 - idx
+                render_queue_item(real_idx, item)
+
+    # 사용전 탭
+    with sub_tabs[1]:
+        unused_items = [(i, item) for i, item in enumerate(st.session_state.queue) if not item["used"]]
+        if not unused_items:
+            st.info("사용 전인 콘텐츠가 없습니다.")
+        else:
+            for real_idx, item in reversed(unused_items):
+                render_queue_item(real_idx, item)
+
+    # 사용후 탭
+    with sub_tabs[2]:
+        used_items = [(i, item) for i, item in enumerate(st.session_state.queue) if item["used"]]
+        if not used_items:
+            st.info("사용 완료된 콘텐츠가 없습니다.")
+        else:
+            for real_idx, item in reversed(used_items):
+                render_queue_item(real_idx, item)
 
 st.divider()
-st.caption(f"© 2026 AI Post Assistant | 섹션 순서 및 모델 선택 위치 조정이 완료되었습니다.")
+st.caption(f"© 2026 AI Post Assistant | 말투 변경 및 사용 여부 탭 구분이 적용되었습니다.")
