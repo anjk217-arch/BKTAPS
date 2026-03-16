@@ -10,8 +10,10 @@ from streamlit_autorefresh import st_autorefresh
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
-# [#] 한국 표준시(KST) 설정을 위한 시차 정의
-KST = datetime.timezone(datetime.timedelta(hours=9))
+# [#] 한국 표준시(KST)를 계산하는 함수 (에러 방지를 위해 Naive 방식으로 처리)
+def get_now_kst():
+    # 서버 시간(UTC)에 9시간을 더해서 순수한 한국 시간으로 반환합니더.
+    return datetime.datetime.utcnow() + datetime.timedelta(hours=9)
 
 # [#] 데이터 불러오기 함수
 def load_data():
@@ -78,53 +80,30 @@ def get_available_models():
         return models if models else ["models/gemini-1.5-flash"]
     except: return ["models/gemini-1.5-flash"]
 
-# [강화] 글자 수 검증 및 다양성 설정이 추가된 생성 함수
+# [강화] 글자 수 제한 강화 버전 함수
 def generate_draft(topic, min_len, max_len, style, model_name):
-    # 다양성을 위해 설정을 추가합니다 (Temperature 조절로 매번 다른 글 생성)
-    generation_config = {
-        "temperature": 0.8,
-        "top_p": 0.95,
-        "top_k": 40,
-        "max_output_tokens": 1024,
-    }
-    
-    final_text = ""
-    # 최대 3번까지 스스로 검토하며 다시 쓰게 만듭니다.
-    for attempt in range(3):
-        try:
-            model = genai.GenerativeModel(model_name=model_name, generation_config=generation_config)
-            prompt = f"""
-            너는 '글자 수 제한 전문가'이자 베테랑 카피라이터다.
-            주제: {topic}
-            말투: {style}
+    try:
+        model = genai.GenerativeModel(model_name)
+        prompt = f"""
+        너는 '글자 수 제한 전문가'이자 베테랑 카피라이터다.
+        주제: {topic}
+        말투: {style}
 
-            [절대 준수 규칙]
-            1. 결과물은 반드시 공백을 포함하여 **{min_len}자 이상 {max_len}자 이하**여야 한다. (현재 설정 범위: {min_len}~{max_len}자)
-            2. 다른 설명이나 인사말은 일절 생략하고 오직 '게시글 내용'만 출력하라.
-            3. 작성 프로세스:
-               - 1단계: 주제에 맞는 내용을 작성한다.
-               - 2단계: 작성한 글의 글자 수를 스스로 센다.
-               - 3단계: 글자 수가 {min_len}~{max_len}자 사이가 아니라면, 내용을 줄이거나 늘려서 다시 맞춘다.
-               - 4단계: 최종 글자 수가 확실히 범위 안에 들어왔을 때만 그 내용을 출력한다.
-            
-            지금 바로 이 규칙에 맞춰 {style} 말투로 작성해라.
-            """
-            response = model.generate_content(prompt)
-            final_text = response.text.strip()
-            
-            # 파이썬 코드가 직접 글자 수를 체크합니다.
-            current_len = len(final_text)
-            if min_len <= current_len <= max_len:
-                return final_text # 범위에 맞으면 즉시 반환
-            
-            # 범위에 안 맞으면 다음 시도 때 프롬프트를 더 강조합니다.
-            topic += f" (이전 결과가 {current_len}자로 범위를 벗어났으니, 이번엔 글자 수에 더 집중해라)"
-            
-        except Exception as e:
-            if attempt == 2: return f"AI 오류 발생: {e}"
-            continue
-            
-    return final_text # 3번 다 실패해도 마지막 결과는 보여줍니다.
+        [절대 준수 규칙]
+        1. 결과물은 반드시 공백을 포함하여 **{min_len}자 이상 {max_len}자 이하**여야 한다. (현재 설정 범위: {min_len}~{max_len}자)
+        2. 다른 설명이나 인사말은 일절 생략하고 오직 '게시글 내용'만 출력하라.
+        3. 작성 프로세스:
+           - 1단계: 주제에 맞는 내용을 작성한다.
+           - 2단계: 작성한 글의 글자 수를 스스로 센다.
+           - 3단계: 글자 수가 {min_len}~{max_len}자 사이가 아니라면, 내용을 줄이거나 늘려서 다시 맞춘다.
+           - 4단계: 최종 글자 수가 확실히 범위 안에 들어왔을 때만 그 내용을 출력한다.
+        
+        지금 바로 이 규칙에 맞춰 {style} 말투로 작성해라.
+        """
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        return f"AI 오류 발생: {e}"
 
 # --- UI 구성 ---
 st.set_page_config(page_title="AI Post Assistant", layout="wide")
@@ -137,6 +116,7 @@ st.markdown(f"""
     @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
     .spinning {{ display: inline-block; animation: spin 2s linear infinite; color: #00BFFF; font-size: 24px; }}
     .status-card {{ padding: 15px; border-radius: 12px; border: 1px solid #333; background-color: #0e1117; text-align: center; }}
+    .vertical-line {{ border-left: 1px solid #444; height: 320px; margin: 40px auto 0 auto; width: 1px; }}
     .kakao-floating-btn {{
         position: fixed; bottom: 80px; right: 40px; width: 60px; height: 60px;
         background-color: #FEE500; border-radius: 50%; box-shadow: 4px 10px 20px rgba(0,0,0,0.3);
@@ -212,16 +192,20 @@ with t1:
 
     if st.button("✨ 즉시 AI 초안 생성", use_container_width=True, type="primary"):
         if st.session_state.topic_input:
-            with st.spinner("AI가 최적의 결과를 위해 고군분투 중입니다..."):
+            with st.spinner("AI가 작성 중입니다..."):
                 res = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
-                st.session_state.queue.append({"time": datetime.datetime.now().strftime("%m-%d %H:%M"), "content": res, "used": False})
+                # [시간 수정] Naive 한국 시간으로 저장
+                now_kst = get_now_kst()
+                st.session_state.queue.append({"time": now_kst.strftime("%m-%d %H:%M"), "content": res, "used": False})
                 save_data(); st.session_state.success_msg = "✅ 초안 생성 완료!"; st.rerun()
 
     # 자동화 엔진 로직
-    now = datetime.datetime.now()
+    # [시간 수정] Naive 한국 시간 기준으로 현재 시각 파악
+    now = get_now_kst()
     if st.session_state.auto_gen_mode and ["월","화","수","목","금","토","일"][now.weekday()] in st.session_state.target_days:
         if st.session_state.start_t <= now.time() <= st.session_state.end_t:
             lg = st.session_state.last_gen_time
+            # lg(문자열)를 다시 불러올 때 naive하게 처리하여 비교 에러 방지
             if lg is None or (now - datetime.datetime.fromisoformat(lg)).total_seconds() >= st.session_state.gen_interval_min * 60:
                 new_txt = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model)
                 st.session_state.queue.append({"time": now.strftime("%m-%d %H:%M"), "content": new_txt, "used": False})
@@ -243,7 +227,8 @@ with t2:
                     st.session_state.queue[idx]["used"] = checked
                     save_data(); st.rerun()
             with col_t: st.caption(f"🕒 {item['time']} | ID: {idx+1}")
-            with col_c: st.markdown(f"<p style='text-align:right; color:#00BFFF; font-size:13px; font-weight:bold;'>{char_c}자</p>", unsafe_allow_html=True)
+            with col_char: # 여기서 col_char가 정의 안 되어있어서 에러 났을 수도 있겠네예. col_c로 바꿉니다.
+                st.markdown(f"<p style='text-align:right; color:#00BFFF; font-size:13px;'>{char_c}자</p>", unsafe_allow_html=True)
             
             lines = item['content'].count('\n') + (len(item['content']) // 42) + 2
             h = max(130, lines * 27)
