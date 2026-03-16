@@ -134,7 +134,6 @@ st.markdown(f"""
     @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
     .spinning {{ display: inline-block; animation: spin 2s linear infinite; color: #00BFFF; font-size: 24px; }}
     .status-card {{ padding: 15px; border-radius: 12px; border: 1px solid #333; background-color: #0e1117; text-align: center; }}
-    .vertical-line {{ border-left: 1px solid #444; height: 320px; margin: 40px auto 0 auto; width: 1px; }}
     .kakao-floating-btn {{
         position: fixed; bottom: 80px; right: 40px; width: 60px; height: 60px;
         background-color: #FEE500; border-radius: 50%; box-shadow: 4px 10px 20px rgba(0,0,0,0.3);
