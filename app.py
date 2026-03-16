@@ -233,8 +233,38 @@ with t2:
             
             c1, c2 = st.columns([3, 1])
             with c1:
-                js_code = f"navigator.clipboard.writeText({json.dumps(edited)})"
-                components.html(f"""<button onclick="{js_code}" style="background:#00BFFF; border:none; padding:8px; border-radius:5px; width:100%; cursor:pointer; font-weight:bold;">📋 텍스트 복사</button>""", height=45)
+                safe_text = json.dumps(edited)
+                btn_id = f"btn_{tab_id}_{idx}"
+                components.html(f"""
+                    <button id="{btn_id}" style="
+                        background-color: #00BFFF; color: black; border: none; padding: 8px 15px;
+                        border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; width: 100%;
+                    ">📋 텍스트 복사</button>
+                    <script>
+                    document.getElementById('{btn_id}').onclick = function() {{
+                        const text = {safe_text};
+                        const textArea = document.createElement("textarea");
+                        textArea.value = text;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        try {{
+                            document.execCommand('copy');
+                            const btn = document.getElementById('{btn_id}');
+                            btn.innerText = '✅ 복사 완료';
+                            btn.style.backgroundColor = '#28a745';
+                            btn.style.color = 'white';
+                            setTimeout(() => {{
+                                btn.innerText = '📋 텍스트 복사';
+                                btn.style.backgroundColor = '#00BFFF';
+                                btn.style.color = 'black';
+                            }}, 2000);
+                        }} catch (err) {{
+                            console.error('복사 실패:', err);
+                        }}
+                        document.body.removeChild(textArea);
+                    }}
+                    </script>
+                """, height=45)
             with c2:
                 if st.button("🗑️ 삭제", key=f"dl_{tab_id}_{idx}", use_container_width=True):
                     st.session_state.queue.pop(idx); save_data(); st.rerun()
