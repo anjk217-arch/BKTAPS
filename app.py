@@ -10,6 +10,9 @@ from streamlit_autorefresh import st_autorefresh
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
+# [#] 한국 표준시(KST) 설정을 위한 시차 정의
+KST = datetime.timezone(datetime.timedelta(hours=9))
+
 # [#] 데이터 불러오기 함수
 def load_data():
     defaults = {
