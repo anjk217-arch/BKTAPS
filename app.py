@@ -10,9 +10,9 @@ from streamlit_autorefresh import st_autorefresh
 # [#] 저장용 파일 경로
 SAVE_FILE = "moneydock_data.json"
 
-# [#] 한국 표준시(KST)를 계산하는 함수 (에러 방지를 위해 Naive 방식으로 처리)
+# [#] 한국 표준시(KST)를 계산하는 함수 (Naive 방식)
 def get_now_kst():
-    # 서버 시간(UTC)에 9시간을 더해서 순수한 한국 시간으로 반환합니더.
+    # 서버 시간(UTC)에 9시간을 더해 순수한 한국 시간으로 반환합니다.
     return datetime.datetime.utcnow() + datetime.timedelta(hours=9)
 
 # [#] 데이터 불러오기 함수
@@ -142,7 +142,6 @@ if st.session_state.success_msg:
     st.success(st.session_state.success_msg)
     st.session_state.success_msg = None 
 
-# 자동 생성 모드일 때만 새로고침 가동
 if st.session_state.auto_gen_mode:
     st_autorefresh(interval=60000, key="auto_worker")
 
@@ -194,18 +193,14 @@ with t1:
         if st.session_state.topic_input:
             with st.spinner("AI가 작성 중입니다..."):
                 res = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model) 
-                # [시간 수정] Naive 한국 시간으로 저장
                 now_kst = get_now_kst()
                 st.session_state.queue.append({"time": now_kst.strftime("%m-%d %H:%M"), "content": res, "used": False})
                 save_data(); st.session_state.success_msg = "✅ 초안 생성 완료!"; st.rerun()
 
-    # 자동화 엔진 로직
-    # [시간 수정] Naive 한국 시간 기준으로 현재 시각 파악
     now = get_now_kst()
     if st.session_state.auto_gen_mode and ["월","화","수","목","금","토","일"][now.weekday()] in st.session_state.target_days:
         if st.session_state.start_t <= now.time() <= st.session_state.end_t:
             lg = st.session_state.last_gen_time
-            # lg(문자열)를 다시 불러올 때 naive하게 처리하여 비교 에러 방지
             if lg is None or (now - datetime.datetime.fromisoformat(lg)).total_seconds() >= st.session_state.gen_interval_min * 60:
                 new_txt = generate_draft(st.session_state.topic_input, st.session_state.char_range[0], st.session_state.char_range[1], st.session_state.post_style, st.session_state.selected_model)
                 st.session_state.queue.append({"time": now.strftime("%m-%d %H:%M"), "content": new_txt, "used": False})
@@ -227,8 +222,8 @@ with t2:
                     st.session_state.queue[idx]["used"] = checked
                     save_data(); st.rerun()
             with col_t: st.caption(f"🕒 {item['time']} | ID: {idx+1}")
-            with col_char: # 여기서 col_char가 정의 안 되어있어서 에러 났을 수도 있겠네예. col_c로 바꿉니다.
-                st.markdown(f"<p style='text-align:right; color:#00BFFF; font-size:13px;'>{char_c}자</p>", unsafe_allow_html=True)
+            with col_c: # 에러 원인이었던 col_char를 col_c로 확실히 고쳤십니더!
+                st.markdown(f"<p style='text-align:right; color:#00BFFF; font-size:13px; font-weight:bold;'>{char_c}자</p>", unsafe_allow_html=True)
             
             lines = item['content'].count('\n') + (len(item['content']) // 42) + 2
             h = max(130, lines * 27)
